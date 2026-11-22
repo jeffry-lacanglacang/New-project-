@@ -453,12 +453,6 @@ const state = {
 };
 
 let uidCounter = 1;
-let activeMomentaryComp = null;
-let toastTimer = null;
-let buzzerSynth = null;
-let clickSynth = null;
-let buzzerLoopActive = false;
-
 function genId(prefix = 'id') {
     return `${prefix}_${Date.now().toString(36)}_${uidCounter++}`;
 }
@@ -489,10 +483,12 @@ function pushHistory() {
     updateStatusCounts();
 }
 
-function applySceneSnapshot(snap) {
-    const cloned = JSON.parse(JSON.stringify(snap));
-    state.components = cloned.components;
-    state.wires = cloned.wires;
+function undo() {
+    if (state.isSimulating || state.historyIndex <= 0) return;
+    state.historyIndex--;
+    const snap = JSON.parse(JSON.stringify(state.history[state.historyIndex]));
+    state.components = snap.components;
+    state.wires = snap.wires;
     state.selectedIds.clear();
     updateHistoryButtons();
     updateStatusCounts();
@@ -501,16 +497,18 @@ function applySceneSnapshot(snap) {
     render();
 }
 
-function undo() {
-    if (state.isSimulating || state.historyIndex <= 0) return;
-    state.historyIndex--;
-    applySceneSnapshot(state.history[state.historyIndex]);
-}
-
 function redo() {
     if (state.isSimulating || state.historyIndex >= state.history.length - 1) return;
     state.historyIndex++;
-    applySceneSnapshot(state.history[state.historyIndex]);
+    const snap = JSON.parse(JSON.stringify(state.history[state.historyIndex]));
+    state.components = snap.components;
+    state.wires = snap.wires;
+    state.selectedIds.clear();
+    updateHistoryButtons();
+    updateStatusCounts();
+    updateFloatingActions();
+    refreshInspectorIfOpen();
+    render();
 }
 
 function updateHistoryButtons() {
@@ -526,6 +524,7 @@ function updateHistoryButtons() {
     });
 }
 
+let toastTimer = null;
 function showToast(msg, isError = false) {
     const banner = document.getElementById('toast-banner');
     const txt = document.getElementById('toast-banner-text');
@@ -554,40 +553,7 @@ function showToast(msg, isError = false) {
 }
 
 // =========================================================================
-// SIDEBAR OPEN / CLOSE HELPERS
-// =========================================================================
-function isResourcesSidebarOpen() {
-    const sidebar = document.getElementById('left-sidebar');
-    return sidebar && !sidebar.classList.contains('hidden');
-}
-
-function openResourcesSidebar() {
-    const sidebar = document.getElementById('left-sidebar');
-    const backdrop = document.getElementById('sidebar-backdrop');
-    if (!sidebar) return;
-    sidebar.classList.remove('hidden');
-    sidebar.classList.add('flex');
-    if (backdrop) backdrop.classList.remove('hidden');
-    resizeCanvas();
-}
-
-function closeResourcesSidebar() {
-    const sidebar = document.getElementById('left-sidebar');
-    const backdrop = document.getElementById('sidebar-backdrop');
-    if (!sidebar || sidebar.classList.contains('hidden')) return;
-    sidebar.classList.add('hidden');
-    sidebar.classList.remove('flex');
-    if (backdrop) backdrop.classList.add('hidden');
-    resizeCanvas();
-}
-
-function toggleResourcesSidebar() {
-    if (isResourcesSidebarOpen()) closeResourcesSidebar();
-    else openResourcesSidebar();
-}
-
-// =========================================================================
-// JSON EXPORT & IMPORT
+// NATIVE DEVICE FILE EXPLORER JSON EXPORT & IMPORT
 // =========================================================================
 function getDefaultSchematicFilename() {
     const now = new Date();
@@ -607,6 +573,7 @@ async function exportSchematicToFile() {
     const jsonString = JSON.stringify(payload, null, 2);
     const filename = getDefaultSchematicFilename();
 
+    // Try File System Access API when available in top-level secure context
     if (typeof window.showSaveFilePicker === 'function') {
         try {
             const handle = await window.showSaveFilePicker({
@@ -622,7 +589,10 @@ async function exportSchematicToFile() {
             showToast(`Exported: ${handle.name || filename}`);
             return;
         } catch (err) {
-            if (err && err.name === 'AbortError') return;
+            if (err && err.name === 'AbortError') {
+                return; // User cancelled File Explorer save dialog
+            }
+            // Fall back to standard download anchor in restricted frames / unsupported devices
         }
     }
 
@@ -650,6 +620,7 @@ function loadSchematicObject(parsed, sourceName = '') {
         throw new Error('Invalid schematic JSON format');
     }
 
+    // Sanitize and normalize imported components & wires
     const validComponents = parsed.components
         .filter(c => c && typeof c === 'object' && typeof c.type === 'string' && CATALOG[c.type])
         .map(c => {
@@ -694,7 +665,8 @@ function loadSchematicObject(parsed, sourceName = '') {
     refreshInspectorIfOpen();
     fitSchematicToScreen();
 
-    showToast(sourceName ? `Imported "${sourceName}"` : 'Schematic imported (.json)');
+    const label = sourceName ? `Imported "${sourceName}"` : 'Schematic imported (.json)';
+    showToast(label);
 }
 
 function readAndLoadJsonFile(file) {
@@ -716,6 +688,7 @@ function readAndLoadJsonFile(file) {
 }
 
 async function triggerImportFromFileExplorer() {
+    // Use File System Access API if available in secure top-level browsing context
     if (typeof window.showOpenFilePicker === 'function') {
         try {
             const [fileHandle] = await window.showOpenFilePicker({
@@ -731,7 +704,10 @@ async function triggerImportFromFileExplorer() {
             }
             return;
         } catch (err) {
-            if (err && err.name === 'AbortError') return;
+            if (err && err.name === 'AbortError') {
+                return; // User cancelled File Explorer open dialog
+            }
+            // Fall back to standard <input type="file"> below
         }
     }
 
@@ -742,9 +718,10 @@ async function triggerImportFromFileExplorer() {
     }
 }
 
-// =========================================================================
-// AUDIO SYNTHESIS
-// =========================================================================
+let buzzerSynth = null;
+let clickSynth = null;
+let buzzerLoopActive = false;
+
 async function ensureAudioReady() {
     if (!state.soundEnabled || typeof Tone === 'undefined') return;
     try {
@@ -795,9 +772,6 @@ function setBuzzerSound(active) {
     } catch (e) {}
 }
 
-// =========================================================================
-// GEOMETRY & WIRE ROUTING HELPERS
-// =========================================================================
 function snapVal(v) {
     return state.snapToGrid ? Math.round(v / GRID_SIZE) * GRID_SIZE : Math.round(v);
 }
@@ -852,54 +826,87 @@ function findTerminalAt(wx, wy, tolerance = getHitTolerance(13, 20)) {
     return null;
 }
 
-function projectPointOntoSegment(px, py, x1, y1, x2, y2) {
-    const dx = x2 - x1;
-    const dy = y2 - y1;
-    const l2 = dx * dx + dy * dy;
-    if (l2 === 0) {
-        return { x: Math.round(x1), y: Math.round(y1), dist: Math.hypot(px - x1, py - y1) };
+function findWireEndpointAt(wx, wy, tolerance = getHitTolerance(11, 18)) {
+    for (let i = state.wires.length - 1; i >= 0; i--) {
+        const w = state.wires[i];
+        const pts = w.points || [];
+        if (pts.length === 0) continue;
+        const first = pts[0];
+        if (Math.hypot(first.x - wx, first.y - wy) <= tolerance) {
+            return { wireId: w.id, ptIndex: 0, x: first.x, y: first.y };
+        }
+        const last = pts[pts.length - 1];
+        if (Math.hypot(last.x - wx, last.y - wy) <= tolerance) {
+            return { wireId: w.id, ptIndex: pts.length - 1, x: last.x, y: last.y };
+        }
     }
-    let t = ((px - x1) * dx + (py - y1) * dy) / l2;
+    return null;
+}
+
+function closestPointOnSegment(px, py, x1, y1, x2, y2) {
+    const l2 = (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1);
+    if (l2 === 0) return { x: x1, y: y1 };
+    let t = ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / l2;
     t = Math.max(0, Math.min(1, t));
-    const cx = x1 + t * dx;
-    const cy = y1 + t * dy;
     return {
-        x: (Math.abs(dy) === 0 && state.snapToGrid) ? snapVal(cx) : Math.round(cx),
-        y: (Math.abs(dx) === 0 && state.snapToGrid) ? snapVal(cy) : Math.round(cy),
-        dist: Math.hypot(px - cx, py - cy)
+        x: x1 + t * (x2 - x1),
+        y: y1 + t * (y2 - y1)
     };
 }
 
-function findWireTapPointAt(wx, wy, tolerance = getHitTolerance(11, 18), excludeWireId = null) {
+function findWireTapAt(wx, wy, tolerance = getHitTolerance(11, 18)) {
+    const ep = findWireEndpointAt(wx, wy, tolerance);
+    if (ep) return ep;
+
     for (let i = state.wires.length - 1; i >= 0; i--) {
         const w = state.wires[i];
-        if (excludeWireId && w.id === excludeWireId) continue;
         const pts = w.points || [];
         for (let j = 0; j < pts.length; j++) {
             if (Math.hypot(pts[j].x - wx, pts[j].y - wy) <= tolerance) {
-                return {
-                    wireId: w.id,
-                    x: Math.round(pts[j].x),
-                    y: Math.round(pts[j].y),
-                    isEndpoint: j === 0 || j === pts.length - 1
-                };
+                return { wireId: w.id, ptIndex: j, x: pts[j].x, y: pts[j].y, isTap: true };
+            }
+        }
+        for (let j = 0; j < pts.length - 1; j++) {
+            const p1 = pts[j];
+            const p2 = pts[j + 1];
+            const cp = closestPointOnSegment(wx, wy, p1.x, p1.y, p2.x, p2.y);
+            if (Math.hypot(wx - cp.x, wy - cp.y) <= tolerance) {
+                let tx = cp.x;
+                let ty = cp.y;
+                if (p1.x === p2.x) {
+                    tx = p1.x;
+                    ty = Math.max(Math.min(p1.y, p2.y), Math.min(Math.max(p1.y, p2.y), snapVal(cp.y)));
+                } else if (p1.y === p2.y) {
+                    ty = p1.y;
+                    tx = Math.max(Math.min(p1.x, p2.x), Math.min(Math.max(p1.x, p2.x), snapVal(cp.x)));
+                } else {
+                    tx = Math.round(cp.x);
+                    ty = Math.round(cp.y);
+                }
+                return { wireId: w.id, segIndex: j, x: Math.round(tx), y: Math.round(ty), isTap: true };
             }
         }
     }
+    return null;
+}
 
-    let best = null;
-    for (let i = state.wires.length - 1; i >= 0; i--) {
-        const w = state.wires[i];
+function splitWireAtPoint(x, y, excludeWireId = null) {
+    const rx = Math.round(x);
+    const ry = Math.round(y);
+    for (const w of state.wires) {
         if (excludeWireId && w.id === excludeWireId) continue;
         const pts = w.points || [];
+        if (pts.length < 2) continue;
+        if (pts.some(p => Math.round(p.x) === rx && Math.round(p.y) === ry)) continue;
         for (let j = 0; j < pts.length - 1; j++) {
-            const proj = projectPointOntoSegment(wx, wy, pts[j].x, pts[j].y, pts[j + 1].x, pts[j + 1].y);
-            if (proj.dist <= tolerance && (!best || proj.dist < best.dist)) {
-                best = { wireId: w.id, x: proj.x, y: proj.y, dist: proj.dist, isEndpoint: false };
+            const p1 = pts[j];
+            const p2 = pts[j + 1];
+            if (distToSegment(rx, ry, p1.x, p1.y, p2.x, p2.y) <= 2) {
+                w.points.splice(j + 1, 0, { x: rx, y: ry });
+                break;
             }
         }
     }
-    return best;
 }
 
 function findComponentAt(wx, wy) {
@@ -961,8 +968,8 @@ function simplifyWirePoints(pts) {
         const a = result[result.length - 1];
         const b = dedup[i];
         const c = dedup[i + 1];
-        const collinearH = a.y === b.y && b.y === c.y;
-        const collinearV = a.x === b.x && b.x === c.x;
+        const collinearH = (a.y === b.y && b.y === c.y);
+        const collinearV = (a.x === b.x && b.x === c.x);
         if (!collinearH && !collinearV) {
             result.push(b);
         }
@@ -984,9 +991,11 @@ function moveWireEndpointOrthogonal(wire, ptIndex, nx, ny) {
             pts[ptIndex] = { x: rx, y: ry };
         } else {
             const elbow = { x: rx, y: other.y };
-            wire.points = ptIndex === 0
-                ? [{ x: rx, y: ry }, elbow, { x: other.x, y: other.y }]
-                : [{ x: other.x, y: other.y }, elbow, { x: rx, y: ry }];
+            if (ptIndex === 0) {
+                wire.points = [{ x: rx, y: ry }, elbow, { x: other.x, y: other.y }];
+            } else {
+                wire.points = [{ x: other.x, y: other.y }, elbow, { x: rx, y: ry }];
+            }
         }
         return;
     }
@@ -997,8 +1006,8 @@ function moveWireEndpointOrthogonal(wire, ptIndex, nx, ny) {
     const adj = pts[adjIdx];
     const next = pts[nextIdx];
 
-    const seg1Horizontal = oldEnd.y === adj.y && oldEnd.x !== adj.x;
-    const seg1Vertical = oldEnd.x === adj.x && oldEnd.y !== adj.y;
+    const seg1Horizontal = (oldEnd.y === adj.y && oldEnd.x !== adj.x);
+    const seg1Vertical = (oldEnd.x === adj.x && oldEnd.y !== adj.y);
 
     pts[ptIndex] = { x: rx, y: ry };
 
@@ -1016,10 +1025,12 @@ function moveWireEndpointOrthogonal(wire, ptIndex, nx, ny) {
             if (ptIndex === 0) wire.points.splice(1, 0, elbow);
             else wire.points.splice(pts.length - 1, 0, elbow);
         }
-    } else if (adj.x !== rx && adj.y !== ry) {
-        const elbow = { x: rx, y: adj.y };
-        if (ptIndex === 0) wire.points.splice(1, 0, elbow);
-        else wire.points.splice(pts.length - 1, 0, elbow);
+    } else {
+        if (adj.x !== rx && adj.y !== ry) {
+            const elbow = { x: rx, y: adj.y };
+            if (ptIndex === 0) wire.points.splice(1, 0, elbow);
+            else wire.points.splice(pts.length - 1, 0, elbow);
+        }
     }
 }
 
@@ -1041,13 +1052,23 @@ function captureTerminalWireAttachments(compIds) {
         const startKey = `${Math.round(pts[0].x)},${Math.round(pts[0].y)}`;
         if (termLookup.has(startKey)) {
             const ref = termLookup.get(startKey)[0];
-            attachments.push({ wireId: wire.id, ptIndex: 0, compId: ref.compId, termId: ref.termId });
+            attachments.push({
+                wireId: wire.id,
+                ptIndex: 0,
+                compId: ref.compId,
+                termId: ref.termId
+            });
         }
         const endIdx = pts.length - 1;
         const endKey = `${Math.round(pts[endIdx].x)},${Math.round(pts[endIdx].y)}`;
         if (termLookup.has(endKey)) {
             const ref = termLookup.get(endKey)[0];
-            attachments.push({ wireId: wire.id, ptIndex: endIdx, compId: ref.compId, termId: ref.termId });
+            attachments.push({
+                wireId: wire.id,
+                ptIndex: endIdx,
+                compId: ref.compId,
+                termId: ref.termId
+            });
         }
     }
     return attachments;
@@ -1087,177 +1108,77 @@ function applyTerminalWireAttachments(attachments, simplify = false) {
 
 function computeJunctionDots() {
     const endpointCounts = new Map();
-    const wireEndpoints = [];
-
+    const endpoints = [];
     for (const w of state.wires) {
         const pts = w.points || [];
         if (pts.length === 0) continue;
-        const p0 = { x: Math.round(pts[0].x), y: Math.round(pts[0].y) };
-        const k0 = `${p0.x},${p0.y}`;
-        endpointCounts.set(k0, (endpointCounts.get(k0) || 0) + 1);
-        wireEndpoints.push({ wireId: w.id, x: p0.x, y: p0.y });
-
+        const first = { x: Math.round(pts[0].x), y: Math.round(pts[0].y) };
+        const firstKey = `${first.x},${first.y}`;
+        endpointCounts.set(firstKey, (endpointCounts.get(firstKey) || 0) + 1);
+        endpoints.push({ wireId: w.id, x: first.x, y: first.y, key: firstKey });
         if (pts.length > 1) {
-            const pLast = { x: Math.round(pts[pts.length - 1].x), y: Math.round(pts[pts.length - 1].y) };
-            const kLast = `${pLast.x},${pLast.y}`;
-            endpointCounts.set(kLast, (endpointCounts.get(kLast) || 0) + 1);
-            wireEndpoints.push({ wireId: w.id, x: pLast.x, y: pLast.y });
+            const lastRaw = pts[pts.length - 1];
+            const last = { x: Math.round(lastRaw.x), y: Math.round(lastRaw.y) };
+            const lastKey = `${last.x},${last.y}`;
+            endpointCounts.set(lastKey, (endpointCounts.get(lastKey) || 0) + 1);
+            endpoints.push({ wireId: w.id, x: last.x, y: last.y, key: lastKey });
         }
     }
 
+    const junctionKeys = new Set();
     const junctions = [];
-    const seen = new Set();
-
     for (const [key, count] of endpointCounts.entries()) {
-        if (count >= 3 && !seen.has(key)) {
-            seen.add(key);
+        if (count >= 3) {
+            junctionKeys.add(key);
             const [x, y] = key.split(',').map(Number);
             junctions.push({ x, y });
         }
     }
 
-    for (const ep of wireEndpoints) {
-        const key = `${ep.x},${ep.y}`;
-        if (seen.has(key)) continue;
-        let tappedOtherWire = false;
+    for (const ep of endpoints) {
+        if (junctionKeys.has(ep.key)) continue;
         for (const w of state.wires) {
             if (w.id === ep.wireId) continue;
             const pts = w.points || [];
-            for (let s = 0; s < pts.length - 1; s++) {
-                if (distToSegment(ep.x, ep.y, pts[s].x, pts[s].y, pts[s + 1].x, pts[s + 1].y) <= 2.5) {
-                    tappedOtherWire = true;
-                    break;
+            for (let j = 0; j < pts.length - 1; j++) {
+                const p1 = pts[j];
+                const p2 = pts[j + 1];
+                if (distToSegment(ep.x, ep.y, p1.x, p1.y, p2.x, p2.y) <= 2) {
+                    const isEnd1 = (Math.round(p1.x) === ep.x && Math.round(p1.y) === ep.y && j === 0);
+                    const isEnd2 = (Math.round(p2.x) === ep.x && Math.round(p2.y) === ep.y && j === pts.length - 2);
+                    if (!isEnd1 && !isEnd2) {
+                        junctionKeys.add(ep.key);
+                        junctions.push({ x: ep.x, y: ep.y });
+                        break;
+                    }
                 }
             }
-            if (tappedOtherWire) break;
-        }
-        if (tappedOtherWire) {
-            seen.add(key);
-            junctions.push({ x: ep.x, y: ep.y });
+            if (junctionKeys.has(ep.key)) break;
         }
     }
 
     return junctions;
 }
 
-// =========================================================================
-// ELECTRICAL SOLVER & SIMULATION
-// =========================================================================
-function addContactEdgesForComponent(comp, def, tMap, addCondEdge) {
-    if (def.isSwitch) {
-        const isClosed = !!comp.closed;
-        if (def.switchType === 'twostep_nonc') {
-            const step = comp.step || 0;
-            if (step === 0) addCondEdge(tMap['1'], tMap['2']);
-            if (step >= 1) addCondEdge(tMap['3'], tMap['4']);
-            if (step >= 2) addCondEdge(tMap['5'], tMap['6']);
-        } else if (def.switchType === 'momentary_nonc') {
-            if (!isClosed) addCondEdge(tMap['1'], tMap['2']);
-            else addCondEdge(tMap['3'], tMap['4']);
-        } else if (isClosed) {
-            if (def.poles === 2) {
-                addCondEdge(tMap['1'], tMap['2']);
-                addCondEdge(tMap['3'], tMap['4']);
-            } else if (def.poles === 3) {
-                addCondEdge(tMap['1'], tMap['2']);
-                addCondEdge(tMap['3'], tMap['4']);
-                addCondEdge(tMap['5'], tMap['6']);
-            } else {
-                addCondEdge(tMap['1'] || tMap['3'] || tMap['13'], tMap['2'] || tMap['4'] || tMap['14']);
-            }
-        }
-        return;
-    }
-
-    if (def.isOverload) {
-        if (!comp.closed) addCondEdge(tMap['95'], tMap['96']);
-        else addCondEdge(tMap['97'], tMap['98']);
-        return;
-    }
-
-    if (def.isContact) {
-        const tag = (comp.tag || '').trim().toUpperCase();
-        const actuated = tag ? !!state.simRuntime.coilActive[tag] : false;
-
-        switch (def.contactType) {
-            case 'no':
-                if (actuated) addCondEdge(tMap['13'] || tMap['67'], tMap['14'] || tMap['68']);
-                break;
-            case 'nc':
-                if (!actuated) addCondEdge(tMap['21'] || tMap['55'], tMap['22'] || tMap['56']);
-                break;
-            case 'co':
-                if (!actuated) addCondEdge(tMap['11'], tMap['12']);
-                else addCondEdge(tMap['11'], tMap['14']);
-                break;
-            case 'power3p':
-                if (actuated) {
-                    addCondEdge(tMap['1'], tMap['2']);
-                    addCondEdge(tMap['3'], tMap['4']);
-                    addCondEdge(tMap['5'], tMap['6']);
-                }
-                break;
-            case 'power3p_no':
-                if (actuated) {
-                    addCondEdge(tMap['1'], tMap['2']);
-                    addCondEdge(tMap['3'], tMap['4']);
-                    addCondEdge(tMap['5'], tMap['6']);
-                    addCondEdge(tMap['13'], tMap['14']);
-                }
-                break;
-            case 'power3p_nc':
-                if (actuated) {
-                    addCondEdge(tMap['1'], tMap['2']);
-                    addCondEdge(tMap['3'], tMap['4']);
-                    addCondEdge(tMap['5'], tMap['6']);
-                } else {
-                    addCondEdge(tMap['21'], tMap['22']);
-                }
-                break;
-            case 'power3p_no_nc':
-                if (actuated) {
-                    addCondEdge(tMap['1'], tMap['2']);
-                    addCondEdge(tMap['3'], tMap['4']);
-                    addCondEdge(tMap['5'], tMap['6']);
-                    addCondEdge(tMap['13'], tMap['14']);
-                } else {
-                    addCondEdge(tMap['21'], tMap['22']);
-                }
-                break;
-            case 'power4p':
-                if (actuated) {
-                    addCondEdge(tMap['1'], tMap['2']);
-                    addCondEdge(tMap['3'], tMap['4']);
-                    addCondEdge(tMap['5'], tMap['6']);
-                    addCondEdge(tMap['7'], tMap['8']);
-                }
-                break;
-            case 'power4p_2no2nc':
-                if (actuated) {
-                    addCondEdge(tMap['1'], tMap['2']);
-                    addCondEdge(tMap['7'], tMap['8']);
-                } else {
-                    addCondEdge(tMap['3'], tMap['4']);
-                    addCondEdge(tMap['5'], tMap['6']);
-                }
-                break;
-        }
-    }
-}
-
 function buildElectricalGraph() {
     const parent = new Map();
 
     function regPt(x, y) {
-        const k = `${Math.round(x)},${Math.round(y)}`;
-        if (!parent.has(k)) parent.set(k, k);
+        const rx = Math.round(x);
+        const ry = Math.round(y);
+        const k = `${rx},${ry}`;
+        if (!parent.has(k)) {
+            parent.set(k, k);
+        }
         return k;
     }
 
     function find(k) {
         if (!k || !parent.has(k)) return k;
         let root = k;
-        while (parent.get(root) !== root) root = parent.get(root);
+        while (parent.get(root) !== root) {
+            root = parent.get(root);
+        }
         let curr = k;
         while (parent.get(curr) !== root) {
             const nxt = parent.get(curr);
@@ -1275,62 +1196,50 @@ function buildElectricalGraph() {
     }
 
     const compTermKeys = new Map();
-    const anchorNodes = [];
+    const allNodes = [];
 
     for (const comp of state.components) {
         const terms = getComponentTerminalsWorld(comp);
         const map = {};
         for (const t of terms) {
-            const tx = Math.round(t.x);
-            const ty = Math.round(t.y);
-            const k = regPt(tx, ty);
+            const k = regPt(t.x, t.y);
             map[t.termId] = k;
-            anchorNodes.push({ x: tx, y: ty, key: k });
+            allNodes.push({ x: Math.round(t.x), y: Math.round(t.y), key: k });
         }
         compTermKeys.set(comp.id, map);
     }
 
-    const wireSegs = [];
     for (const w of state.wires) {
         const pts = w.points || [];
-        if (pts.length < 2) continue;
-        const pStart = { x: Math.round(pts[0].x), y: Math.round(pts[0].y) };
-        const pEnd = { x: Math.round(pts[pts.length - 1].x), y: Math.round(pts[pts.length - 1].y) };
-        const kStart = regPt(pStart.x, pStart.y);
-        const kEnd = regPt(pEnd.x, pEnd.y);
-
+        if (pts.length === 0) continue;
+        const startKey = regPt(pts[0].x, pts[0].y);
+        allNodes.push({ x: Math.round(pts[0].x), y: Math.round(pts[0].y), key: startKey });
         for (let i = 1; i < pts.length; i++) {
-            union(kStart, regPt(pts[i].x, pts[i].y));
-        }
-
-        anchorNodes.push({ x: pStart.x, y: pStart.y, key: kStart });
-        anchorNodes.push({ x: pEnd.x, y: pEnd.y, key: kEnd });
-
-        for (let s = 0; s < pts.length - 1; s++) {
-            wireSegs.push({
-                wireId: w.id,
-                wireKey: kStart,
-                x1: Math.round(pts[s].x),
-                y1: Math.round(pts[s].y),
-                x2: Math.round(pts[s + 1].x),
-                y2: Math.round(pts[s + 1].y)
-            });
+            const vk = regPt(pts[i].x, pts[i].y);
+            allNodes.push({ x: Math.round(pts[i].x), y: Math.round(pts[i].y), key: vk });
+            union(startKey, vk);
         }
     }
 
-    for (let i = 0; i < anchorNodes.length; i++) {
-        for (let j = i + 1; j < anchorNodes.length; j++) {
-            if (anchorNodes[i].x === anchorNodes[j].x && anchorNodes[i].y === anchorNodes[j].y) {
-                union(anchorNodes[i].key, anchorNodes[j].key);
+    for (const w of state.wires) {
+        const pts = w.points || [];
+        if (pts.length < 2) continue;
+        const baseKey = regPt(pts[0].x, pts[0].y);
+        for (let s = 0; s < pts.length - 1; s++) {
+            const p1 = pts[s];
+            const p2 = pts[s + 1];
+            for (const nd of allNodes) {
+                if (distToSegment(nd.x, nd.y, p1.x, p1.y, p2.x, p2.y) <= 5) {
+                    union(baseKey, nd.key);
+                }
             }
         }
     }
 
-    for (const seg of wireSegs) {
-        for (const nd of anchorNodes) {
-            if (nd.key === seg.wireKey) continue;
-            if (distToSegment(nd.x, nd.y, seg.x1, seg.y1, seg.x2, seg.y2) <= 2.5) {
-                union(seg.wireKey, nd.key);
+    for (let i = 0; i < allNodes.length; i++) {
+        for (let j = i + 1; j < allNodes.length; j++) {
+            if (Math.hypot(allNodes[i].x - allNodes[j].x, allNodes[i].y - allNodes[j].y) <= 5) {
+                union(allNodes[i].key, allNodes[j].key);
             }
         }
     }
@@ -1362,8 +1271,99 @@ function buildElectricalGraph() {
         const def = CATALOG[comp.type];
         const tMap = compTermKeys.get(comp.id);
         if (!def || !tMap) continue;
-        addContactEdgesForComponent(comp, def, tMap, addCondEdge);
-        if (def.isDiode) addDiodeEdge(tMap['A'], tMap['K']);
+
+        if (def.isSwitch) {
+            const isClosed = !!comp.closed;
+            if (def.switchType === 'twostep_nonc') {
+                const step = comp.step || 0;
+                if (step === 0) {
+                    addCondEdge(tMap['1'], tMap['2']);
+                } else if (step === 1) {
+                    addCondEdge(tMap['3'], tMap['4']);
+                } else if (step === 2) {
+                    addCondEdge(tMap['3'], tMap['4']);
+                    addCondEdge(tMap['5'], tMap['6']);
+                }
+            } else if (def.switchType === 'momentary_nonc') {
+                if (!isClosed) addCondEdge(tMap['1'], tMap['2']);
+                else addCondEdge(tMap['3'], tMap['4']);
+            } else if (isClosed) {
+                if (def.poles === 2) {
+                    addCondEdge(tMap['1'], tMap['2']);
+                    addCondEdge(tMap['3'], tMap['4']);
+                } else if (def.poles === 3) {
+                    addCondEdge(tMap['1'], tMap['2']);
+                    addCondEdge(tMap['3'], tMap['4']);
+                    addCondEdge(tMap['5'], tMap['6']);
+                } else {
+                    const a = tMap['1'] || tMap['3'] || tMap['13'];
+                    const b = tMap['2'] || tMap['4'] || tMap['14'];
+                    addCondEdge(a, b);
+                }
+            }
+        } else if (def.isOverload) {
+            const tripped = !!comp.closed;
+            if (!tripped) addCondEdge(tMap['95'], tMap['96']);
+            else addCondEdge(tMap['97'], tMap['98']);
+        } else if (def.isContact) {
+            const tag = (comp.tag || '').trim().toUpperCase();
+            const actuated = tag ? !!state.simRuntime.coilActive[tag] : false;
+            if (def.contactType === 'no') {
+                if (actuated) addCondEdge(tMap['13'] || tMap['67'], tMap['14'] || tMap['68']);
+            } else if (def.contactType === 'nc') {
+                if (!actuated) addCondEdge(tMap['21'] || tMap['55'], tMap['22'] || tMap['56']);
+            } else if (def.contactType === 'co') {
+                if (!actuated) addCondEdge(tMap['11'], tMap['12']);
+                else addCondEdge(tMap['11'], tMap['14']);
+            } else if (def.contactType === 'power3p') {
+                if (actuated) {
+                    addCondEdge(tMap['1'], tMap['2']);
+                    addCondEdge(tMap['3'], tMap['4']);
+                    addCondEdge(tMap['5'], tMap['6']);
+                }
+            } else if (def.contactType === 'power3p_no') {
+                if (actuated) {
+                    addCondEdge(tMap['1'], tMap['2']);
+                    addCondEdge(tMap['3'], tMap['4']);
+                    addCondEdge(tMap['5'], tMap['6']);
+                    addCondEdge(tMap['13'], tMap['14']);
+                }
+            } else if (def.contactType === 'power3p_nc') {
+                if (actuated) {
+                    addCondEdge(tMap['1'], tMap['2']);
+                    addCondEdge(tMap['3'], tMap['4']);
+                    addCondEdge(tMap['5'], tMap['6']);
+                } else {
+                    addCondEdge(tMap['21'], tMap['22']);
+                }
+            } else if (def.contactType === 'power3p_no_nc') {
+                if (actuated) {
+                    addCondEdge(tMap['1'], tMap['2']);
+                    addCondEdge(tMap['3'], tMap['4']);
+                    addCondEdge(tMap['5'], tMap['6']);
+                    addCondEdge(tMap['13'], tMap['14']);
+                } else {
+                    addCondEdge(tMap['21'], tMap['22']);
+                }
+            } else if (def.contactType === 'power4p') {
+                if (actuated) {
+                    addCondEdge(tMap['1'], tMap['2']);
+                    addCondEdge(tMap['3'], tMap['4']);
+                    addCondEdge(tMap['5'], tMap['6']);
+                    addCondEdge(tMap['7'], tMap['8']);
+                }
+            } else if (def.contactType === 'power4p_2no2nc') {
+                if (actuated) {
+                    addCondEdge(tMap['1'], tMap['2']);
+                    addCondEdge(tMap['7'], tMap['8']);
+                } else {
+                    addCondEdge(tMap['3'], tMap['4']);
+                    addCondEdge(tMap['5'], tMap['6']);
+                }
+            }
+        } else if (def.isDiode) {
+            addDiodeEdge(tMap['A'], tMap['K']);
+        }
     }
 
     const nodePotentials = {};
@@ -1393,23 +1393,30 @@ function buildElectricalGraph() {
         }
     }
 
+    const sourceSeeds = [];
     for (const comp of state.components) {
         const def = CATALOG[comp.type];
-        if (!def || !def.isSource) continue;
+        if (!def) continue;
         const tMap = compTermKeys.get(comp.id);
-        for (const t of def.terminals) {
-            if (t.potential && tMap[t.id]) {
-                propagateDirect(tMap[t.id], t.potential);
+        if (def.isSource) {
+            for (const t of def.terminals) {
+                if (t.potential && tMap[t.id]) {
+                    sourceSeeds.push({ key: tMap[t.id], pot: t.potential });
+                }
             }
         }
+    }
+
+    for (const s of sourceSeeds) {
+        propagateDirect(s.key, s.pot);
     }
 
     for (const comp of state.components) {
         const def = CATALOG[comp.type];
         if (!def || !def.isTransformer) continue;
         const tMap = compTermKeys.get(comp.id);
-        const rH1 = tMap['H1'] ? find(tMap['H1']) : null;
-        const rH2 = tMap['H2'] ? find(tMap['H2']) : null;
+        const rH1 = graphCheckRoot(find, tMap['H1']);
+        const rH2 = graphCheckRoot(find, tMap['H2']);
         if (hasValidPotentialDiff(nodePotentials[rH1], nodePotentials[rH2])) {
             propagateDirect(tMap['X1'], 'L1');
             propagateDirect(tMap['X2'], 'N');
@@ -1445,37 +1452,60 @@ function buildElectricalGraph() {
         const aPots = nodePotentials[anodeRoot];
         const hasHotFeed = aPots && (aPots.has('L1') || aPots.has('L2') || aPots.has('L3') || aPots.has('N') || aPots.has('DC+'));
         if (hasHotFeed) {
-            for (const kRoot of cathodes) seedDCPlus(kRoot);
+            for (const kRoot of cathodes) {
+                seedDCPlus(kRoot);
+            }
         }
     }
 
     while (dcPlusQueue.length > 0) {
         const curr = dcPlusQueue.shift();
-        for (const nxt of (condAdj.get(curr) || [])) seedDCPlus(nxt);
-        for (const nxt of (diodeAdj.get(curr) || [])) seedDCPlus(nxt);
+        const condNeighbors = condAdj.get(curr);
+        if (condNeighbors) {
+            for (const nxt of condNeighbors) {
+                seedDCPlus(nxt);
+            }
+        }
+        const diodeTargets = diodeAdj.get(curr);
+        if (diodeTargets) {
+            for (const nxt of diodeTargets) {
+                seedDCPlus(nxt);
+            }
+        }
     }
 
     for (const [anodeRoot, cathodes] of diodeAdj.entries()) {
-        const feedsDCPlus = Array.from(cathodes).some(kRoot => nodePotentials[kRoot] && nodePotentials[kRoot].has('DC+'));
-        const aPots = nodePotentials[anodeRoot];
-        if (feedsDCPlus && aPots && (aPots.has('L1') || aPots.has('L2') || aPots.has('L3') || aPots.has('N') || aPots.has('DC-'))) {
-            const retVisited = new Set([anodeRoot]);
-            const retQueue = [anodeRoot];
-            while (retQueue.length > 0) {
-                const rCurr = retQueue.shift();
-                if (!nodePotentials[rCurr]) nodePotentials[rCurr] = new Set();
-                nodePotentials[rCurr].add('DC-');
-                for (const nxt of (condAdj.get(rCurr) || [])) {
-                    if (!retVisited.has(nxt)) {
-                        retVisited.add(nxt);
-                        retQueue.push(nxt);
+        let feedsDCPlus = false;
+        for (const kRoot of cathodes) {
+            if (nodePotentials[kRoot] && nodePotentials[kRoot].has('DC+')) {
+                feedsDCPlus = true;
+                break;
+            }
+        }
+        if (feedsDCPlus) {
+            const aPots = nodePotentials[anodeRoot];
+            if (aPots && (aPots.has('L1') || aPots.has('L2') || aPots.has('L3') || aPots.has('N') || aPots.has('DC-'))) {
+                const retVisited = new Set([anodeRoot]);
+                const retQueue = [anodeRoot];
+                while (retQueue.length > 0) {
+                    const rCurr = retQueue.shift();
+                    if (!nodePotentials[rCurr]) nodePotentials[rCurr] = new Set();
+                    nodePotentials[rCurr].add('DC-');
+                    const cNbrs = condAdj.get(rCurr);
+                    if (cNbrs) {
+                        for (const nxt of cNbrs) {
+                            if (!retVisited.has(nxt)) {
+                                retVisited.add(nxt);
+                                retQueue.push(nxt);
+                            }
+                        }
                     }
                 }
             }
         }
     }
 
-    for (const pots of Object.values(nodePotentials)) {
+    for (const [root, pots] of Object.entries(nodePotentials)) {
         if (pots.has('DC+') && pots.has('DC-')) {
             return { shortCircuit: 'Rectified DC+ to DC- Short Circuit!' };
         }
@@ -1491,7 +1521,18 @@ function buildElectricalGraph() {
         for (const v of nbrs) adj.get(u).add(v);
     }
 
-    return { shortCircuit: null, find, adj, compTermKeys, nodePotentials, energizedRoots };
+    return {
+        shortCircuit: null,
+        find,
+        adj,
+        compTermKeys,
+        nodePotentials,
+        energizedRoots
+    };
+}
+
+function graphCheckRoot(findFn, k) {
+    return k ? findFn(k) : null;
 }
 
 function hasValidPotentialDiff(potsA, potsB) {
@@ -1499,170 +1540,23 @@ function hasValidPotentialDiff(potsA, potsB) {
     const hotA = ['L1', 'L2', 'L3'].filter(p => potsA.has(p));
     const hotB = ['L1', 'L2', 'L3'].filter(p => potsB.has(p));
 
-    if (hotA.length === 1 && potsB.has('N') && hotB.length === 0) return true;
-    if (hotB.length === 1 && potsA.has('N') && hotA.length === 0) return true;
-    if (hotA.length === 1 && hotB.length === 1 && hotA[0] !== hotB[0]) return true;
-
+    if (hotA.length === 1 && potsB.has('N') && hotB.length === 0) {
+        return true;
+    }
+    if (hotB.length === 1 && potsA.has('N') && hotA.length === 0) {
+        return true;
+    }
+    if (hotA.length === 1 && hotB.length === 1 && hotA[0] !== hotB[0]) {
+        return true;
+    }
     const dcPlusA = potsA.has('DC+') && !potsA.has('DC-');
     const dcMinusB = potsB.has('DC-') && !potsB.has('DC+');
     const dcPlusB = potsB.has('DC+') && !potsB.has('DC-');
     const dcMinusA = potsA.has('DC-') && !potsA.has('DC+');
-    return (dcPlusA && dcMinusB) || (dcPlusB && dcMinusA);
-}
-
-function updateCoilStates(comp, def, tagUpper, isEn, prevEn, delay, safeDt, isFirstPass) {
-    let changed = false;
-
-    if (def.coilType === 'standard') {
-        if (state.simRuntime.coilActive[tagUpper] !== isEn) {
-            state.simRuntime.coilActive[tagUpper] = isEn;
-            changed = true;
-            if (isEn) playClickSound();
-        }
-    } else if (def.coilType === 'latch') {
-        if (isEn && !prevEn) {
-            state.simRuntime.latchState[tagUpper] = !state.simRuntime.latchState[tagUpper];
-            state.simRuntime.coilActive[tagUpper] = !!state.simRuntime.latchState[tagUpper];
-            changed = true;
-            playClickSound();
-        }
-    } else if (def.coilType === 'ton') {
-        if (isEn) {
-            if (isFirstPass) {
-                state.simRuntime.coilTimers[tagUpper] = Math.min(delay, (state.simRuntime.coilTimers[tagUpper] || 0) + safeDt);
-            }
-            const active = (state.simRuntime.coilTimers[tagUpper] || 0) >= delay - 1e-4;
-            if (state.simRuntime.coilActive[tagUpper] !== active) {
-                state.simRuntime.coilActive[tagUpper] = active;
-                changed = true;
-                if (active) playClickSound();
-            }
-        } else {
-            state.simRuntime.coilTimers[tagUpper] = 0;
-            if (state.simRuntime.coilActive[tagUpper]) {
-                state.simRuntime.coilActive[tagUpper] = false;
-                changed = true;
-            }
-        }
-    } else if (def.coilType === 'tof') {
-        if (isEn) {
-            state.simRuntime.coilTimers[tagUpper] = delay;
-            if (!state.simRuntime.coilActive[tagUpper]) {
-                state.simRuntime.coilActive[tagUpper] = true;
-                changed = true;
-                playClickSound();
-            }
-        } else {
-            if (isFirstPass && (state.simRuntime.coilTimers[tagUpper] || 0) > 0) {
-                state.simRuntime.coilTimers[tagUpper] = Math.max(0, (state.simRuntime.coilTimers[tagUpper] || 0) - safeDt);
-            }
-            const active = (state.simRuntime.coilTimers[tagUpper] || 0) > 0;
-            if (state.simRuntime.coilActive[tagUpper] !== active) {
-                state.simRuntime.coilActive[tagUpper] = active;
-                changed = true;
-            }
-        }
-    } else if (def.coilType === 'flasher') {
-        if (isEn) {
-            if (isFirstPass) {
-                state.simRuntime.coilTimers[tagUpper] = (state.simRuntime.coilTimers[tagUpper] || 0) + safeDt;
-            }
-            const active = Math.floor((state.simRuntime.coilTimers[tagUpper] || 0) / delay) % 2 === 0;
-            if (state.simRuntime.coilActive[tagUpper] !== active) {
-                state.simRuntime.coilActive[tagUpper] = active;
-                changed = true;
-            }
-        } else {
-            state.simRuntime.coilTimers[tagUpper] = 0;
-            if (state.simRuntime.coilActive[tagUpper]) {
-                state.simRuntime.coilActive[tagUpper] = false;
-                changed = true;
-            }
-        }
+    if ((dcPlusA && dcMinusB) || (dcPlusB && dcMinusA)) {
+        return true;
     }
-
-    return changed;
-}
-
-function evaluateMotorState(comp, def, tMap, graph, areNodesConnected) {
-    const getPh = s => s ? (s.has('L1') ? 'L1' : s.has('L2') ? 'L2' : s.has('L3') ? 'L3' : null) : null;
-    const isValid3Ph = (a, b, c) => !!(a && b && c && a !== b && b !== c && a !== c);
-    const getSeqDir = (a, b, c) => {
-        const seq = `${a}-${b}-${c}`;
-        return (seq === 'L1-L2-L3' || seq === 'L2-L3-L1' || seq === 'L3-L1-L2') ? 'CW' : 'CCW';
-    };
-
-    if (def.motorType === '3p') {
-        const u = getPh(graph.nodePotentials[graph.find(tMap['U1'])]);
-        const v = getPh(graph.nodePotentials[graph.find(tMap['V1'])]);
-        const w = getPh(graph.nodePotentials[graph.find(tMap['W1'])]);
-        return isValid3Ph(u, v, w)
-            ? { running: true, dir: getSeqDir(u, v, w), mode: '3~', speedFactor: 1.0 }
-            : { running: false };
-    }
-
-    if (def.motorType === '3p_2spd') {
-        const u1 = getPh(graph.nodePotentials[graph.find(tMap['1U'])]);
-        const v1 = getPh(graph.nodePotentials[graph.find(tMap['1V'])]);
-        const w1 = getPh(graph.nodePotentials[graph.find(tMap['1W'])]);
-        const u2 = getPh(graph.nodePotentials[graph.find(tMap['2U'])]);
-        const v2 = getPh(graph.nodePotentials[graph.find(tMap['2V'])]);
-        const w2 = getPh(graph.nodePotentials[graph.find(tMap['2W'])]);
-
-        if (isValid3Ph(u2, v2, w2)) {
-            return { running: true, dir: getSeqDir(u2, v2, w2), mode: 'HIGH', speedFactor: 2.0 };
-        }
-        if (isValid3Ph(u1, v1, w1)) {
-            return { running: true, dir: getSeqDir(u1, v1, w1), mode: 'LOW', speedFactor: 1.0 };
-        }
-        return { running: false };
-    }
-
-    if (def.motorType === '3p_sd') {
-        const rU1 = graph.find(tMap['U1']);
-        const rV1 = graph.find(tMap['V1']);
-        const rW1 = graph.find(tMap['W1']);
-        const rU2 = graph.find(tMap['U2']);
-        const rV2 = graph.find(tMap['V2']);
-        const rW2 = graph.find(tMap['W2']);
-
-        const u1 = getPh(graph.nodePotentials[rU1]);
-        const v1 = getPh(graph.nodePotentials[rV1]);
-        const w1 = getPh(graph.nodePotentials[rW1]);
-        const u2 = getPh(graph.nodePotentials[rU2]);
-        const v2 = getPh(graph.nodePotentials[rV2]);
-        const w2 = getPh(graph.nodePotentials[rW2]);
-
-        const has3Ph1 = isValid3Ph(u1, v1, w1);
-        const has3Ph2 = isValid3Ph(u2, v2, w2);
-        const star2 = !!(rU2 && rV2 && rW2 && areNodesConnected(rU2, rV2) && areNodesConnected(rU2, rW2) && !u2 && !v2 && !w2);
-        const star1 = !!(rU1 && rV1 && rW1 && areNodesConnected(rU1, rV1) && areNodesConnected(rU1, rW1) && !u1 && !v1 && !w1);
-
-        if (has3Ph1 && star2) return { running: true, dir: getSeqDir(u1, v1, w1), mode: 'Y (STAR)', speedFactor: 1.0 };
-        if (has3Ph2 && star1) return { running: true, dir: getSeqDir(u2, v2, w2), mode: 'Y (STAR)', speedFactor: 1.0 };
-        if (has3Ph1 && has3Ph2 && u2 !== u1 && v2 !== v1 && w2 !== w1) {
-            return { running: true, dir: getSeqDir(u1, v1, w1), mode: 'Δ (DELTA)', speedFactor: 1.0 };
-        }
-        return { running: false };
-    }
-
-    if (def.motorType === '1p') {
-        const p1 = graph.nodePotentials[graph.find(tMap['U1'])];
-        const p2 = graph.nodePotentials[graph.find(tMap['U2'])];
-        return hasValidPotentialDiff(p1, p2)
-            ? { running: true, dir: 'CW', mode: '1~', speedFactor: 1.0 }
-            : { running: false };
-    }
-
-    if (def.motorType === 'dc') {
-        const p1 = graph.nodePotentials[graph.find(tMap['A1'])];
-        const p2 = graph.nodePotentials[graph.find(tMap['A2'])];
-        if (p1 && p2 && p1.has('DC+') && p2.has('DC-')) return { running: true, dir: 'CW', mode: 'DC+', speedFactor: 1.0 };
-        if (p1 && p2 && p1.has('DC-') && p2.has('DC+')) return { running: true, dir: 'CCW', mode: 'DC-', speedFactor: 1.0 };
-        return { running: false };
-    }
-
-    return { running: false };
+    return false;
 }
 
 function stepSimulation(dt) {
@@ -1681,31 +1575,95 @@ function stepSimulation(dt) {
         for (const comp of state.components) {
             const def = CATALOG[comp.type];
             if (!def || !def.isCoil) continue;
-            const tagUpper = (comp.tag || '').trim().toUpperCase();
-            if (!tagUpper) continue;
+            const tag = (comp.tag || '').trim().toUpperCase();
+            if (!tag) continue;
             const tMap = graph.compTermKeys.get(comp.id);
-            const energized = hasValidPotentialDiff(
-                graph.nodePotentials[graph.find(tMap['A1'])],
-                graph.nodePotentials[graph.find(tMap['A2'])]
-            );
-            if (energized) nextEnergizedByTag[tagUpper] = true;
-            else if (!(tagUpper in nextEnergizedByTag)) nextEnergizedByTag[tagUpper] = false;
+            const r1 = graph.find(tMap['A1']);
+            const r2 = graph.find(tMap['A2']);
+            const energized = hasValidPotentialDiff(graph.nodePotentials[r1], graph.nodePotentials[r2]);
+            if (energized) nextEnergizedByTag[tag] = true;
+            else if (!(tag in nextEnergizedByTag)) nextEnergizedByTag[tag] = false;
         }
 
         let changed = false;
         for (const comp of state.components) {
             const def = CATALOG[comp.type];
             if (!def || !def.isCoil) continue;
-            const tagUpper = (comp.tag || '').trim().toUpperCase();
-            if (!tagUpper) continue;
-            const isEn = !!nextEnergizedByTag[tagUpper];
-            const prevEn = !!state.simRuntime.coilEnergized[tagUpper];
+            const tag = (comp.tag || '').trim().toUpperCase();
+            if (!tag) continue;
+            const isEn = !!nextEnergizedByTag[tag];
+            const prevEn = !!state.simRuntime.coilEnergized[tag];
             const delay = Math.max(0.1, Number(comp.delay ?? def.defaultDelay ?? 3.0));
 
-            if (updateCoilStates(comp, def, tagUpper, isEn, prevEn, delay, safeDt, pass === 0)) {
-                changed = true;
+            if (def.coilType === 'standard') {
+                if (state.simRuntime.coilActive[tag] !== isEn) {
+                    state.simRuntime.coilActive[tag] = isEn;
+                    changed = true;
+                    if (isEn) playClickSound();
+                }
+            } else if (def.coilType === 'latch') {
+                if (isEn && !prevEn) {
+                    state.simRuntime.latchState[tag] = !state.simRuntime.latchState[tag];
+                    state.simRuntime.coilActive[tag] = !!state.simRuntime.latchState[tag];
+                    changed = true;
+                    playClickSound();
+                }
+            } else if (def.coilType === 'ton') {
+                if (isEn) {
+                    if (pass === 0) {
+                        state.simRuntime.coilTimers[tag] = Math.min(delay, (state.simRuntime.coilTimers[tag] || 0) + safeDt);
+                    }
+                    const active = (state.simRuntime.coilTimers[tag] || 0) >= delay - 1e-4;
+                    if (state.simRuntime.coilActive[tag] !== active) {
+                        state.simRuntime.coilActive[tag] = active;
+                        changed = true;
+                        if (active) playClickSound();
+                    }
+                } else {
+                    state.simRuntime.coilTimers[tag] = 0;
+                    if (state.simRuntime.coilActive[tag]) {
+                        state.simRuntime.coilActive[tag] = false;
+                        changed = true;
+                    }
+                }
+            } else if (def.coilType === 'tof') {
+                if (isEn) {
+                    state.simRuntime.coilTimers[tag] = delay;
+                    if (!state.simRuntime.coilActive[tag]) {
+                        state.simRuntime.coilActive[tag] = true;
+                        changed = true;
+                        playClickSound();
+                    }
+                } else {
+                    if (pass === 0 && (state.simRuntime.coilTimers[tag] || 0) > 0) {
+                        state.simRuntime.coilTimers[tag] = Math.max(0, (state.simRuntime.coilTimers[tag] || 0) - safeDt);
+                    }
+                    const active = (state.simRuntime.coilTimers[tag] || 0) > 0;
+                    if (state.simRuntime.coilActive[tag] !== active) {
+                        state.simRuntime.coilActive[tag] = active;
+                        changed = true;
+                    }
+                }
+            } else if (def.coilType === 'flasher') {
+                if (isEn) {
+                    if (pass === 0) {
+                        state.simRuntime.coilTimers[tag] = (state.simRuntime.coilTimers[tag] || 0) + safeDt;
+                    }
+                    const cycle = Math.floor((state.simRuntime.coilTimers[tag] || 0) / delay);
+                    const active = cycle % 2 === 0;
+                    if (state.simRuntime.coilActive[tag] !== active) {
+                        state.simRuntime.coilActive[tag] = active;
+                        changed = true;
+                    }
+                } else {
+                    state.simRuntime.coilTimers[tag] = 0;
+                    if (state.simRuntime.coilActive[tag]) {
+                        state.simRuntime.coilActive[tag] = false;
+                        changed = true;
+                    }
+                }
             }
-            state.simRuntime.coilEnergized[tagUpper] = isEn;
+            state.simRuntime.coilEnergized[tag] = isEn;
         }
 
         if (!changed) break;
@@ -1734,10 +1692,13 @@ function stepSimulation(dt) {
         while (queue.length > 0) {
             const curr = queue.shift();
             if (curr === targetRoot) return true;
-            for (const nxt of (graph.adj.get(curr) || [])) {
-                if (!visited.has(nxt)) {
-                    visited.add(nxt);
-                    queue.push(nxt);
+            const neighbors = graph.adj.get(curr);
+            if (neighbors) {
+                for (const nxt of neighbors) {
+                    if (!visited.has(nxt)) {
+                        visited.add(nxt);
+                        queue.push(nxt);
+                    }
                 }
             }
         }
@@ -1750,23 +1711,114 @@ function stepSimulation(dt) {
         if (!def || !tMap) continue;
 
         if (def.isLamp) {
-            lampStates[comp.id] = hasValidPotentialDiff(
-                graph.nodePotentials[graph.find(tMap['X1'])],
-                graph.nodePotentials[graph.find(tMap['X2'])]
-            );
+            const p1 = graph.nodePotentials[graph.find(tMap['X1'])];
+            const p2 = graph.nodePotentials[graph.find(tMap['X2'])];
+            lampStates[comp.id] = hasValidPotentialDiff(p1, p2);
         } else if (def.isBuzzer) {
-            if (hasValidPotentialDiff(
-                graph.nodePotentials[graph.find(tMap['X1'])],
-                graph.nodePotentials[graph.find(tMap['X2'])]
-            )) {
-                anyBuzzer = true;
-            }
+            const p1 = graph.nodePotentials[graph.find(tMap['X1'])];
+            const p2 = graph.nodePotentials[graph.find(tMap['X2'])];
+            if (hasValidPotentialDiff(p1, p2)) anyBuzzer = true;
         } else if (def.isMotor) {
-            const mState = evaluateMotorState(comp, def, tMap, graph, areNodesConnected);
-            motorStates[comp.id] = mState;
-            if (mState.running) {
-                anyMotorSpinning = true;
-                maxSpeedFactor = Math.max(maxSpeedFactor, mState.speedFactor || 1.0);
+            if (def.motorType === '3p') {
+                const pU = graph.nodePotentials[graph.find(tMap['U1'])];
+                const pV = graph.nodePotentials[graph.find(tMap['V1'])];
+                const pW = graph.nodePotentials[graph.find(tMap['W1'])];
+                const getPh = s => s ? (s.has('L1') ? 'L1' : s.has('L2') ? 'L2' : s.has('L3') ? 'L3' : null) : null;
+                const u = getPh(pU), v = getPh(pV), w = getPh(pW);
+                if (u && v && w && u !== v && v !== w && u !== w) {
+                    const seq = `${u}-${v}-${w}`;
+                    const dir = (seq === 'L1-L2-L3' || seq === 'L2-L3-L1' || seq === 'L3-L1-L2') ? 'CW' : 'CCW';
+                    motorStates[comp.id] = { running: true, dir, mode: '3~' };
+                    anyMotorSpinning = true;
+                } else {
+                    motorStates[comp.id] = { running: false };
+                }
+            } else if (def.motorType === '3p_2spd') {
+                const getPh = s => s ? (s.has('L1') ? 'L1' : s.has('L2') ? 'L2' : s.has('L3') ? 'L3' : null) : null;
+                const u1 = getPh(graph.nodePotentials[graph.find(tMap['1U'])]);
+                const v1 = getPh(graph.nodePotentials[graph.find(tMap['1V'])]);
+                const w1 = getPh(graph.nodePotentials[graph.find(tMap['1W'])]);
+                const u2 = getPh(graph.nodePotentials[graph.find(tMap['2U'])]);
+                const v2 = getPh(graph.nodePotentials[graph.find(tMap['2V'])]);
+                const w2 = getPh(graph.nodePotentials[graph.find(tMap['2W'])]);
+
+                const hasLow = !!(u1 && v1 && w1 && u1 !== v1 && v1 !== w1 && u1 !== w1);
+                const hasHigh = !!(u2 && v2 && w2 && u2 !== v2 && v2 !== w2 && u2 !== w2);
+
+                if (hasHigh) {
+                    const seq2 = `${u2}-${v2}-${w2}`;
+                    const dir = (seq2 === 'L1-L2-L3' || seq2 === 'L2-L3-L1' || seq2 === 'L3-L1-L2') ? 'CW' : 'CCW';
+                    motorStates[comp.id] = { running: true, dir, mode: 'HIGH', speedFactor: 2.0 };
+                    anyMotorSpinning = true;
+                    maxSpeedFactor = Math.max(maxSpeedFactor, 2.0);
+                } else if (hasLow) {
+                    const seq1 = `${u1}-${v1}-${w1}`;
+                    const dir = (seq1 === 'L1-L2-L3' || seq1 === 'L2-L3-L1' || seq1 === 'L3-L1-L2') ? 'CW' : 'CCW';
+                    motorStates[comp.id] = { running: true, dir, mode: 'LOW', speedFactor: 1.0 };
+                    anyMotorSpinning = true;
+                } else {
+                    motorStates[comp.id] = { running: false };
+                }
+            } else if (def.motorType === '3p_sd') {
+                const rU1 = graph.find(tMap['U1']);
+                const rV1 = graph.find(tMap['V1']);
+                const rW1 = graph.find(tMap['W1']);
+                const rU2 = graph.find(tMap['U2']);
+                const rV2 = graph.find(tMap['V2']);
+                const rW2 = graph.find(tMap['W2']);
+                const getPh = s => s ? (s.has('L1') ? 'L1' : s.has('L2') ? 'L2' : s.has('L3') ? 'L3' : null) : null;
+
+                const u1 = getPh(graph.nodePotentials[rU1]);
+                const v1 = getPh(graph.nodePotentials[rV1]);
+                const w1 = getPh(graph.nodePotentials[rW1]);
+                const u2 = getPh(graph.nodePotentials[rU2]);
+                const v2 = getPh(graph.nodePotentials[rV2]);
+                const w2 = getPh(graph.nodePotentials[rW2]);
+
+                const has3Ph1 = !!(u1 && v1 && w1 && u1 !== v1 && v1 !== w1 && u1 !== w1);
+                const has3Ph2 = !!(u2 && v2 && w2 && u2 !== v2 && v2 !== w2 && u2 !== w2);
+                const star2 = !!(rU2 && rV2 && rW2 && areNodesConnected(rU2, rV2) && areNodesConnected(rU2, rW2) && !u2 && !v2 && !w2);
+                const star1 = !!(rU1 && rV1 && rW1 && areNodesConnected(rU1, rV1) && areNodesConnected(rU1, rW1) && !u1 && !v1 && !w1);
+
+                if (has3Ph1 && star2) {
+                    const seq1 = `${u1}-${v1}-${w1}`;
+                    const dir = (seq1 === 'L1-L2-L3' || seq1 === 'L2-L3-L1' || seq1 === 'L3-L1-L2') ? 'CW' : 'CCW';
+                    motorStates[comp.id] = { running: true, dir, mode: 'Y (STAR)' };
+                    anyMotorSpinning = true;
+                } else if (has3Ph2 && star1) {
+                    const seq2 = `${u2}-${v2}-${w2}`;
+                    const dir = (seq2 === 'L1-L2-L3' || seq2 === 'L2-L3-L1' || seq2 === 'L3-L1-L2') ? 'CW' : 'CCW';
+                    motorStates[comp.id] = { running: true, dir, mode: 'Y (STAR)' };
+                    anyMotorSpinning = true;
+                } else if (has3Ph1 && has3Ph2 && u2 !== u1 && v2 !== v1 && w2 !== w1) {
+                    const seq1 = `${u1}-${v1}-${w1}`;
+                    const dir = (seq1 === 'L1-L2-L3' || seq1 === 'L2-L3-L1' || seq1 === 'L3-L1-L2') ? 'CW' : 'CCW';
+                    motorStates[comp.id] = { running: true, dir, mode: 'Δ (DELTA)' };
+                    anyMotorSpinning = true;
+                } else {
+                    motorStates[comp.id] = { running: false };
+                }
+            } else if (def.motorType === '1p') {
+                const p1 = graph.nodePotentials[graph.find(tMap['U1'])];
+                const p2 = graph.nodePotentials[graph.find(tMap['U2'])];
+                if (hasValidPotentialDiff(p1, p2)) {
+                    motorStates[comp.id] = { running: true, dir: 'CW', mode: '1~' };
+                    anyMotorSpinning = true;
+                } else {
+                    motorStates[comp.id] = { running: false };
+                }
+            } else if (def.motorType === 'dc') {
+                const p1 = graph.nodePotentials[graph.find(tMap['A1'])];
+                const p2 = graph.nodePotentials[graph.find(tMap['A2'])];
+                if (p1 && p2 && p1.has('DC+') && p2.has('DC-')) {
+                    motorStates[comp.id] = { running: true, dir: 'CW', mode: 'DC+' };
+                    anyMotorSpinning = true;
+                } else if (p1 && p2 && p1.has('DC-') && p2.has('DC+')) {
+                    motorStates[comp.id] = { running: true, dir: 'CCW', mode: 'DC-' };
+                    anyMotorSpinning = true;
+                } else {
+                    motorStates[comp.id] = { running: false };
+                }
             }
         }
     }
@@ -1792,15 +1844,6 @@ function triggerShortCircuit(message) {
     if (banner) banner.classList.remove('hidden');
 }
 
-function resetSwitchStatesToDefault() {
-    for (const comp of state.components) {
-        const def = CATALOG[comp.type];
-        if (!def || (!def.isSwitch && !def.isOverload)) continue;
-        comp.closed = !!def.defaultClosed;
-        if (def.switchType === 'twostep_nonc') comp.step = 0;
-    }
-}
-
 function startSimulation() {
     ensureAudioReady();
     state.isSimulating = true;
@@ -1824,7 +1867,16 @@ function startSimulation() {
         _findRoot: null
     };
 
-    resetSwitchStatesToDefault();
+    for (const comp of state.components) {
+        const def = CATALOG[comp.type];
+        if (!def) continue;
+        if (def.isSwitch || def.isOverload) {
+            comp.closed = !!def.defaultClosed;
+            if (def.switchType === 'twostep_nonc') {
+                comp.step = 0;
+            }
+        }
+    }
 
     document.getElementById('icon-play').classList.add('hidden');
     document.getElementById('icon-stop').classList.remove('hidden');
@@ -1847,7 +1899,17 @@ function stopSimulation() {
     state.isSimulating = false;
     state.shortCircuitError = null;
     setBuzzerSound(false);
-    resetSwitchStatesToDefault();
+
+    for (const comp of state.components) {
+        const def = CATALOG[comp.type];
+        if (!def) continue;
+        if (def.isSwitch || def.isOverload) {
+            comp.closed = !!def.defaultClosed;
+            if (def.switchType === 'twostep_nonc') {
+                comp.step = 0;
+            }
+        }
+    }
 
     document.getElementById('icon-play').classList.remove('hidden');
     document.getElementById('icon-stop').classList.add('hidden');
@@ -1865,9 +1927,6 @@ function stopSimulation() {
     render();
 }
 
-// =========================================================================
-// CANVAS RENDERING
-// =========================================================================
 function roundRectPath(ctx, x, y, w, h, r) {
     if (typeof ctx.roundRect === 'function') {
         ctx.beginPath();
@@ -1886,454 +1945,6 @@ function roundRectPath(ctx, x, y, w, h, r) {
     ctx.lineTo(x, y + radius);
     ctx.quadraticCurveTo(x, y, x + radius, y);
     ctx.closePath();
-}
-
-function drawPoleSymbol(ctx, px, isClosed, opts = {}) {
-    const { isNC = false, isFuse = false, isCrossed = false, stepClosed = null } = opts;
-    const effectiveClosed = stepClosed !== null ? stepClosed : (isNC ? !isClosed : isClosed);
-
-    ctx.beginPath();
-    ctx.moveTo(px, -40);
-    ctx.lineTo(px, -16);
-    if (isNC) ctx.lineTo(px + 6, -16);
-    ctx.moveTo(px, 40);
-    ctx.lineTo(px, 16);
-    ctx.moveTo(px, 16);
-    if (effectiveClosed) {
-        ctx.lineTo(px, -16);
-    } else {
-        ctx.lineTo(isNC ? px + 4 : px - 10, isNC ? -18 : -13);
-    }
-    ctx.stroke();
-
-    if (isFuse) {
-        ctx.strokeRect(px - 5, -12, 10, 24);
-    } else if (isCrossed) {
-        ctx.beginPath();
-        ctx.moveTo(px - 4, -20); ctx.lineTo(px + 4, -12);
-        ctx.moveTo(px + 4, -20); ctx.lineTo(px - 4, -12);
-        ctx.stroke();
-    }
-}
-
-function drawComponentBody(ctx, comp, def, isClosed, strokeMain, strokeMuted, isDark, tagUpper) {
-    if (def.isTransformer) {
-        ctx.beginPath();
-        ctx.moveTo(-20, -40); ctx.lineTo(-20, -24);
-        ctx.moveTo(20, -40);  ctx.lineTo(20, -24);
-        ctx.arc(-10, -16, 10, Math.PI, 0, false);
-        ctx.arc(10, -16, 10, Math.PI, 0, false);
-        ctx.stroke();
-
-        ctx.save();
-        ctx.strokeStyle = '#f59e0b';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(-24, -4); ctx.lineTo(24, -4);
-        ctx.moveTo(-24, 4);  ctx.lineTo(24, 4);
-        ctx.stroke();
-        ctx.restore();
-
-        ctx.beginPath();
-        ctx.arc(-10, 16, 10, 0, Math.PI, false);
-        ctx.arc(10, 16, 10, 0, Math.PI, false);
-        ctx.moveTo(-20, 24); ctx.lineTo(-20, 40);
-        ctx.moveTo(20, 24);  ctx.lineTo(20, 40);
-        ctx.stroke();
-
-        const priV = comp.primaryV ?? def.defaultPrimaryV ?? 230;
-        const secV = comp.secondaryV ?? def.defaultSecondaryV ?? 24;
-        ctx.font = 'bold 8px "JetBrains Mono", monospace';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillStyle = isDark ? '#fbbf24' : '#b45309';
-        ctx.fillText(`${priV}V→${secV}V`, 0, 0);
-        return;
-    }
-
-    if (def.isSource) {
-        ctx.fillStyle = isDark ? '#1e293b' : '#e2e8f0';
-        roundRectPath(ctx, -def.width / 2 + 4, -14, def.width - 8, 22, 5);
-        ctx.fill();
-        ctx.stroke();
-
-        ctx.font = 'bold 10px "JetBrains Mono", monospace';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        for (const t of def.terminals) {
-            const ws = WIRE_STYLES[t.potential] || WIRE_STYLES['C1'];
-            ctx.strokeStyle = ws.activeColor;
-            ctx.beginPath();
-            ctx.moveTo(t.x, 8);
-            ctx.lineTo(t.x, t.y);
-            ctx.stroke();
-            ctx.fillStyle = ws.activeColor;
-            ctx.fillText(t.label, t.x, -3);
-        }
-        return;
-    }
-
-    if (def.isSwitch) {
-        if (def.switchType === 'twostep_nonc') {
-            const step = state.isSimulating ? (comp.step || 0) : (isClosed ? 2 : 0);
-            drawPoleSymbol(ctx, -20, isClosed, { isNC: true, stepClosed: step === 0 });
-            drawPoleSymbol(ctx, 0, isClosed, { stepClosed: step >= 1 });
-            drawPoleSymbol(ctx, 20, isClosed, { stepClosed: step >= 2 });
-
-            ctx.save();
-            ctx.setLineDash([3, 3]);
-            ctx.strokeStyle = strokeMuted;
-            ctx.beginPath();
-            ctx.moveTo(-36, 0); ctx.lineTo(15, 0);
-            ctx.stroke();
-            ctx.restore();
-
-            ctx.beginPath();
-            ctx.moveTo(-36, -8); ctx.lineTo(-40, -8); ctx.lineTo(-40, 8); ctx.lineTo(-36, 8);
-            ctx.stroke();
-
-            ctx.font = 'bold 7px "JetBrains Mono", monospace';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillStyle = step >= 1 ? '#10b981' : strokeMuted;
-            ctx.fillText('L', 0, 27);
-            ctx.fillStyle = step >= 2 ? '#f59e0b' : strokeMuted;
-            ctx.fillText('H', 20, 27);
-        } else if (def.switchType === 'momentary_nonc') {
-            drawPoleSymbol(ctx, -20, isClosed, { isNC: true });
-            drawPoleSymbol(ctx, 20, isClosed);
-            ctx.save();
-            ctx.setLineDash([3, 3]);
-            ctx.strokeStyle = strokeMuted;
-            ctx.beginPath();
-            ctx.moveTo(-34, 0); ctx.lineTo(15, 0);
-            ctx.stroke();
-            ctx.restore();
-        } else {
-            const cols = def.poles === 3 ? [-20, 0, 20] : def.poles === 2 ? [-20, 20] : [0];
-            for (const px of cols) {
-                drawPoleSymbol(ctx, px, isClosed, {
-                    isNC: def.switchType === 'momentary_nc' || def.switchType === 'estop',
-                    isFuse: !!def.isFuse,
-                    isCrossed: !!def.poles
-                });
-            }
-
-            if (def.switchType === 'momentary_no' || def.switchType === 'momentary_nc') {
-                ctx.save();
-                ctx.setLineDash([3, 3]);
-                ctx.strokeStyle = strokeMuted;
-                ctx.beginPath();
-                ctx.moveTo(-18, 0); ctx.lineTo(-5, 0);
-                ctx.stroke();
-                ctx.restore();
-                ctx.beginPath();
-                ctx.moveTo(-18, -8); ctx.lineTo(-22, -8); ctx.lineTo(-22, 8); ctx.lineTo(-18, 8);
-                ctx.stroke();
-            } else if (def.switchType === 'estop') {
-                ctx.save();
-                ctx.setLineDash([3, 3]);
-                ctx.strokeStyle = '#ef4444';
-                ctx.beginPath();
-                ctx.moveTo(-18, 0); ctx.lineTo(-4, 0);
-                ctx.stroke();
-                ctx.restore();
-                ctx.fillStyle = '#ef4444';
-                ctx.beginPath();
-                ctx.arc(-18, 0, 8, Math.PI * 0.5, Math.PI * 1.5);
-                ctx.fill();
-            } else if (def.isLimit) {
-                ctx.beginPath();
-                ctx.arc(-16, 0, 5, 0, Math.PI * 2);
-                ctx.stroke();
-            } else if (cols.length > 1) {
-                ctx.save();
-                ctx.setLineDash([3, 3]);
-                ctx.strokeStyle = strokeMuted;
-                ctx.beginPath();
-                ctx.moveTo(cols[0] - 5, 0); ctx.lineTo(cols[cols.length - 1], 0);
-                ctx.stroke();
-                ctx.restore();
-            }
-        }
-        return;
-    }
-
-    if (def.isOverload) {
-        drawPoleSymbol(ctx, -20, isClosed, { isNC: true });
-        drawPoleSymbol(ctx, 20, isClosed);
-        ctx.save();
-        ctx.strokeStyle = isClosed ? '#ef4444' : strokeMuted;
-        ctx.beginPath();
-        ctx.moveTo(-34, -8); ctx.lineTo(-28, -8); ctx.lineTo(-28, 8); ctx.lineTo(-34, 8);
-        ctx.stroke();
-        ctx.restore();
-        return;
-    }
-
-    if (def.isCoil) {
-        const energized = state.isSimulating && !!state.simRuntime.coilEnergized[tagUpper];
-        const active = state.isSimulating && !!state.simRuntime.coilActive[tagUpper];
-
-        ctx.beginPath();
-        ctx.moveTo(0, -40); ctx.lineTo(0, -14);
-        ctx.moveTo(0, 40);  ctx.lineTo(0, 14);
-        ctx.stroke();
-
-        if (energized || active) {
-            ctx.fillStyle = active ? 'rgba(239, 68, 68, 0.25)' : 'rgba(245, 158, 11, 0.22)';
-            ctx.fillRect(-18, -14, 36, 28);
-            ctx.strokeStyle = active ? '#ef4444' : '#f59e0b';
-        }
-        ctx.strokeRect(-18, -14, 36, 28);
-
-        if (def.coilType === 'ton') {
-            ctx.beginPath();
-            ctx.moveTo(-18, -14); ctx.lineTo(-10, 14);
-            ctx.moveTo(-10, -14); ctx.lineTo(-18, 14);
-            ctx.stroke();
-        } else if (def.coilType === 'tof') {
-            ctx.fillStyle = strokeMain;
-            ctx.fillRect(-18, -14, 8, 28);
-        } else if (def.coilType === 'flasher') {
-            ctx.beginPath();
-            ctx.moveTo(-14, 4); ctx.lineTo(-14, -4); ctx.lineTo(-9, -4); ctx.lineTo(-9, 4);
-            ctx.stroke();
-        } else if (def.coilType === 'latch') {
-            ctx.beginPath();
-            ctx.moveTo(-18, -6); ctx.lineTo(-12, 0); ctx.lineTo(-18, 6);
-            ctx.stroke();
-        }
-        return;
-    }
-
-    if (def.isContact) {
-        const drawMechBar = (xStart, xEnd) => {
-            ctx.save();
-            ctx.setLineDash([3, 3]);
-            ctx.strokeStyle = strokeMuted;
-            ctx.beginPath();
-            ctx.moveTo(xStart, 0); ctx.lineTo(xEnd, 0);
-            ctx.stroke();
-            ctx.restore();
-        };
-
-        switch (def.contactType) {
-            case 'power3p':
-                [-20, 0, 20].forEach(px => drawPoleSymbol(ctx, px, isClosed));
-                drawMechBar(-25, 20);
-                break;
-            case 'power3p_no':
-            case 'power4p':
-                [-40, -20, 0, 20].forEach(px => drawPoleSymbol(ctx, px, isClosed));
-                drawMechBar(-45, 20);
-                break;
-            case 'power4p_2no2nc':
-                [-40, 20].forEach(px => drawPoleSymbol(ctx, px, isClosed));
-                [-20, 0].forEach(px => drawPoleSymbol(ctx, px, isClosed, { isNC: true }));
-                drawMechBar(-45, 20);
-                break;
-            case 'power3p_nc':
-                [-40, -20, 0].forEach(px => drawPoleSymbol(ctx, px, isClosed));
-                drawPoleSymbol(ctx, 20, isClosed, { isNC: true });
-                drawMechBar(-45, 22);
-                break;
-            case 'power3p_no_nc':
-                [-40, -20, 0, 20].forEach(px => drawPoleSymbol(ctx, px, isClosed));
-                drawPoleSymbol(ctx, 40, isClosed, { isNC: true });
-                drawMechBar(-45, 42);
-                break;
-            case 'no':
-                drawPoleSymbol(ctx, 0, isClosed);
-                if (def.timerSymbol === 'ton') {
-                    ctx.beginPath();
-                    ctx.arc(-8, 4, 6, Math.PI * 0.5, Math.PI * 1.5);
-                    ctx.stroke();
-                }
-                break;
-            case 'nc':
-                drawPoleSymbol(ctx, 0, isClosed, { isNC: true });
-                if (def.timerSymbol === 'ton') {
-                    ctx.beginPath();
-                    ctx.arc(-8, 4, 6, Math.PI * 0.5, Math.PI * 1.5);
-                    ctx.stroke();
-                }
-                break;
-            case 'co':
-                ctx.beginPath();
-                ctx.moveTo(0, -40);  ctx.lineTo(0, -14);
-                ctx.moveTo(-20, 40); ctx.lineTo(-20, 16); ctx.lineTo(-12, 16);
-                ctx.moveTo(20, 40);  ctx.lineTo(20, 16);  ctx.lineTo(12, 16);
-                ctx.moveTo(0, -14);
-                if (!isClosed) ctx.lineTo(-14, 18);
-                else ctx.lineTo(14, 16);
-                ctx.stroke();
-                break;
-        }
-        return;
-    }
-
-    if (def.isMotor) {
-        const mState = state.isSimulating ? state.simRuntime.motorStates[comp.id] : null;
-        const running = mState && mState.running;
-
-        for (const t of def.terminals) {
-            ctx.beginPath();
-            if (t.id === 'PE') {
-                ctx.moveTo(26, 0); ctx.lineTo(40, 0);
-            } else if (t.y < 0) {
-                ctx.moveTo(t.x, t.y); ctx.lineTo(t.x, -22);
-            } else {
-                ctx.moveTo(t.x, t.y); ctx.lineTo(t.x, 22);
-            }
-            ctx.stroke();
-        }
-
-        ctx.fillStyle = running ? 'rgba(16, 185, 129, 0.16)' : (isDark ? '#111827' : '#ffffff');
-        if (running) ctx.strokeStyle = '#10b981';
-        ctx.beginPath();
-        ctx.arc(0, 0, 26, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-
-        if (running) {
-            ctx.save();
-            const ang = (mState.dir === 'CCW' ? -1 : 1) * state.simRuntime.motorAngle;
-            ctx.rotate(ang);
-            ctx.strokeStyle = 'rgba(16, 185, 129, 0.55)';
-            ctx.lineWidth = 1.5;
-            ctx.beginPath();
-            ctx.moveTo(-20, 0); ctx.lineTo(20, 0);
-            ctx.moveTo(0, -20); ctx.lineTo(0, 20);
-            ctx.stroke();
-            ctx.restore();
-        }
-
-        ctx.fillStyle = running ? '#10b981' : strokeMain;
-        ctx.font = 'bold 13px "Inter", sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(def.motorType === 'dc' ? 'M=' : 'M', 0, -2);
-        ctx.font = 'bold 9px "JetBrains Mono", monospace';
-        const subLabel = def.motorType === 'dc' ? 'DC' : def.motorType === '1p' ? '1~' : def.motorType === '3p_2spd' ? '3~ 2S' : '3~';
-        ctx.fillText(subLabel, 0, 11);
-        return;
-    }
-
-    if (def.isLamp) {
-        const lit = state.isSimulating && !!state.simRuntime.lampStates[comp.id];
-        const lampColor = comp.color || def.defaultColor || '#22c55e';
-
-        ctx.beginPath();
-        ctx.moveTo(0, -40); ctx.lineTo(0, -16);
-        ctx.moveTo(0, 40);  ctx.lineTo(0, 16);
-        ctx.stroke();
-
-        if (lit) {
-            ctx.save();
-            ctx.shadowColor = lampColor;
-            ctx.shadowBlur = 18;
-            ctx.fillStyle = lampColor;
-            ctx.beginPath();
-            ctx.arc(0, 0, 16, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.restore();
-        } else {
-            ctx.fillStyle = isDark ? '#1e293b' : '#f1f5f9';
-            ctx.beginPath();
-            ctx.arc(0, 0, 16, 0, Math.PI * 2);
-            ctx.fill();
-        }
-
-        ctx.strokeStyle = lit ? '#ffffff' : strokeMain;
-        ctx.beginPath();
-        ctx.arc(0, 0, 16, 0, Math.PI * 2);
-        ctx.moveTo(-11, -11); ctx.lineTo(11, 11);
-        ctx.moveTo(11, -11);  ctx.lineTo(-11, 11);
-        ctx.stroke();
-        return;
-    }
-
-    if (def.isBuzzer) {
-        const active = state.isSimulating && state.simRuntime.buzzerActive;
-        ctx.beginPath();
-        ctx.moveTo(0, -40); ctx.lineTo(0, -14);
-        ctx.moveTo(0, 40);  ctx.lineTo(0, 14);
-        ctx.stroke();
-
-        ctx.fillStyle = active ? '#f59e0b' : (isDark ? '#1e293b' : '#f1f5f9');
-        ctx.beginPath();
-        ctx.moveTo(-14, -14); ctx.lineTo(14, -14); ctx.lineTo(14, 14); ctx.lineTo(-14, 14);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-        return;
-    }
-
-    if (def.isDiode) {
-        ctx.beginPath();
-        ctx.moveTo(0, -40); ctx.lineTo(0, -10);
-        ctx.moveTo(0, 40);  ctx.lineTo(0, 10);
-        ctx.moveTo(-10, 10); ctx.lineTo(10, 10);
-        ctx.stroke();
-
-        ctx.beginPath();
-        ctx.moveTo(-10, -10); ctx.lineTo(10, -10); ctx.lineTo(0, 10);
-        ctx.closePath();
-        ctx.fill();
-        return;
-    }
-
-    if (def.isLabel) {
-        ctx.font = 'bold 12px "Inter", sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillStyle = isDark ? '#93c5fd' : '#1d4ed8';
-        ctx.fillText(comp.comment || comp.tag || 'SECTION TITLE', 0, 0);
-    }
-}
-
-function drawComponentBadges(ctx, comp, def, tagUpper) {
-    if (state.isSimulating && def.isSwitch && def.switchType === 'twostep_nonc') {
-        const step = comp.step || 0;
-        const badgeLabel = step === 0 ? 'OFF (0)' : step === 1 ? 'LOW (1)' : 'HIGH (2)';
-        ctx.fillStyle = step === 0 ? '#475569' : step === 1 ? '#059669' : '#d97706';
-        roundRectPath(ctx, -28, -58, 56, 15, 4);
-        ctx.fill();
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 9px "JetBrains Mono", monospace';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(badgeLabel, 0, -50.5);
-    }
-
-    if (state.isSimulating && def.isCoil && (def.coilType === 'ton' || def.coilType === 'tof')) {
-        const delay = Number(comp.delay ?? def.defaultDelay ?? 3.0);
-        const elapsed = Number(state.simRuntime.coilTimers[tagUpper] || 0);
-        const remaining = def.coilType === 'ton' ? Math.max(0, delay - elapsed) : elapsed;
-        ctx.fillStyle = '#2563eb';
-        roundRectPath(ctx, -24, -32, 48, 15, 4);
-        ctx.fill();
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 9px "JetBrains Mono", monospace';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(`${remaining.toFixed(1)}s`, 0, -24.5);
-    }
-
-    if (state.isSimulating && def.isMotor) {
-        const mState = state.simRuntime.motorStates[comp.id];
-        if (mState && mState.running) {
-            ctx.fillStyle = mState.mode === 'HIGH' ? '#d97706' : '#059669';
-            roundRectPath(ctx, -38, 46, 76, 16, 4);
-            ctx.fill();
-            ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 9px "JetBrains Mono", monospace';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(`${mState.dir} · ${mState.mode}`, 0, 54);
-        }
-    }
 }
 
 function drawComponent(ctx, comp, isSelected) {
@@ -2376,7 +1987,506 @@ function drawComponent(ctx, comp, isSelected) {
         ? (def.isContact ? (tagUpper ? !!state.simRuntime.coilActive[tagUpper] : false) : !!comp.closed)
         : (typeof comp.closed === 'boolean' ? comp.closed : !!def.defaultClosed);
 
-    drawComponentBody(ctx, comp, def, isClosed, strokeMain, strokeMuted, isDark, tagUpper);
+    if (def.isTransformer) {
+        ctx.beginPath();
+        ctx.moveTo(-20, -40); ctx.lineTo(-20, -24);
+        ctx.moveTo(20, -40);  ctx.lineTo(20, -24);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(-10, -16, 10, Math.PI, 0, false);
+        ctx.arc(10, -16, 10, Math.PI, 0, false);
+        ctx.stroke();
+
+        ctx.save();
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-24, -4); ctx.lineTo(24, -4);
+        ctx.moveTo(-24, 4);  ctx.lineTo(24, 4);
+        ctx.stroke();
+        ctx.restore();
+
+        ctx.beginPath();
+        ctx.arc(-10, 16, 10, 0, Math.PI, false);
+        ctx.arc(10, 16, 10, 0, Math.PI, false);
+        ctx.moveTo(-20, 24); ctx.lineTo(-20, 40);
+        ctx.moveTo(20, 24);  ctx.lineTo(20, 40);
+        ctx.stroke();
+
+        const priV = comp.primaryV ?? def.defaultPrimaryV ?? 230;
+        const secV = comp.secondaryV ?? def.defaultSecondaryV ?? 24;
+        ctx.font = 'bold 8px "JetBrains Mono", monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = isDark ? '#fbbf24' : '#b45309';
+        ctx.fillText(`${priV}V→${secV}V`, 0, 0);
+    } else if (def.isSource) {
+        ctx.fillStyle = isDark ? '#1e293b' : '#e2e8f0';
+        roundRectPath(ctx, -def.width / 2 + 4, -14, def.width - 8, 22, 5);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.font = 'bold 10px "JetBrains Mono", monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        for (const t of def.terminals) {
+            const ws = WIRE_STYLES[t.potential] || WIRE_STYLES['C1'];
+            ctx.strokeStyle = ws.activeColor;
+            ctx.beginPath();
+            ctx.moveTo(t.x, 8);
+            ctx.lineTo(t.x, t.y);
+            ctx.stroke();
+
+            ctx.fillStyle = ws.activeColor;
+            ctx.fillText(t.label, t.x, -3);
+        }
+    } else if (def.isSwitch) {
+        if (def.switchType === 'twostep_nonc') {
+            const step = state.isSimulating ? (comp.step || 0) : (isClosed ? 2 : 0);
+            const ncClosed = step === 0;
+            const no1Closed = step >= 1;
+            const no2Closed = step >= 2;
+
+            ctx.beginPath();
+            ctx.moveTo(-20, -40); ctx.lineTo(-20, -16); ctx.lineTo(-14, -16);
+            ctx.moveTo(-20, 40);  ctx.lineTo(-20, 16);
+            ctx.moveTo(-20, 16);
+            if (ncClosed) ctx.lineTo(-16, -18);
+            else ctx.lineTo(-30, -13);
+
+            ctx.moveTo(0, -40); ctx.lineTo(0, -16);
+            ctx.moveTo(0, 40);  ctx.lineTo(0, 16);
+            ctx.moveTo(0, 16);
+            if (no1Closed) ctx.lineTo(0, -16);
+            else ctx.lineTo(-10, -13);
+
+            ctx.moveTo(20, -40); ctx.lineTo(20, -16);
+            ctx.moveTo(20, 40);  ctx.lineTo(20, 16);
+            ctx.moveTo(20, 16);
+            if (no2Closed) ctx.lineTo(20, -16);
+            else ctx.lineTo(10, -13);
+            ctx.stroke();
+
+            ctx.save();
+            ctx.setLineDash([3, 3]);
+            ctx.strokeStyle = strokeMuted;
+            ctx.beginPath();
+            ctx.moveTo(-36, 0); ctx.lineTo(15, 0);
+            ctx.stroke();
+            ctx.restore();
+
+            ctx.beginPath();
+            ctx.moveTo(-36, -8); ctx.lineTo(-40, -8); ctx.lineTo(-40, 8); ctx.lineTo(-36, 8);
+            ctx.stroke();
+
+            ctx.font = 'bold 7px "JetBrains Mono", monospace';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = no1Closed ? '#10b981' : strokeMuted;
+            ctx.fillText('L', 0, 27);
+            ctx.fillStyle = no2Closed ? '#f59e0b' : strokeMuted;
+            ctx.fillText('H', 20, 27);
+        } else if (def.switchType === 'momentary_nonc') {
+            ctx.beginPath();
+            ctx.moveTo(-20, -40); ctx.lineTo(-20, -16); ctx.lineTo(-14, -16);
+            ctx.moveTo(-20, 40);  ctx.lineTo(-20, 16);
+            ctx.moveTo(-20, 16);
+            if (!isClosed) ctx.lineTo(-16, -18);
+            else ctx.lineTo(-30, -13);
+
+            ctx.moveTo(20, -40); ctx.lineTo(20, -16);
+            ctx.moveTo(20, 40);  ctx.lineTo(20, 16);
+            ctx.moveTo(20, 16);
+            if (isClosed) ctx.lineTo(20, -16);
+            else ctx.lineTo(10, -13);
+            ctx.stroke();
+
+            ctx.save();
+            ctx.setLineDash([3, 3]);
+            ctx.strokeStyle = strokeMuted;
+            ctx.beginPath();
+            ctx.moveTo(-34, 0); ctx.lineTo(15, 0);
+            ctx.stroke();
+            ctx.restore();
+        } else {
+            const cols = def.poles === 3 ? [-20, 0, 20] : def.poles === 2 ? [-20, 20] : [0];
+            for (const px of cols) {
+                ctx.beginPath();
+                ctx.moveTo(px, -40); ctx.lineTo(px, -16);
+                if (def.switchType === 'momentary_nc' || def.switchType === 'estop') {
+                    ctx.lineTo(px + 6, -16);
+                }
+                ctx.moveTo(px, 40); ctx.lineTo(px, 16);
+                ctx.moveTo(px, 16);
+                if (isClosed) {
+                    ctx.lineTo(px, -16);
+                } else {
+                    ctx.lineTo(px - 10, -13);
+                }
+                ctx.stroke();
+
+                if (def.isFuse) {
+                    ctx.strokeRect(px - 5, -12, 10, 24);
+                } else if (def.poles) {
+                    ctx.beginPath();
+                    ctx.moveTo(px - 4, -20); ctx.lineTo(px + 4, -12);
+                    ctx.moveTo(px + 4, -20); ctx.lineTo(px - 4, -12);
+                    ctx.stroke();
+                }
+            }
+
+            if (def.switchType === 'momentary_no' || def.switchType === 'momentary_nc') {
+                ctx.save();
+                ctx.setLineDash([3, 3]);
+                ctx.strokeStyle = strokeMuted;
+                ctx.beginPath();
+                ctx.moveTo(-18, 0); ctx.lineTo(-5, 0);
+                ctx.stroke();
+                ctx.restore();
+                ctx.beginPath();
+                ctx.moveTo(-18, -8); ctx.lineTo(-22, -8); ctx.lineTo(-22, 8); ctx.lineTo(-18, 8);
+                ctx.stroke();
+            } else if (def.switchType === 'estop') {
+                ctx.save();
+                ctx.setLineDash([3, 3]);
+                ctx.strokeStyle = '#ef4444';
+                ctx.beginPath();
+                ctx.moveTo(-18, 0); ctx.lineTo(-4, 0);
+                ctx.stroke();
+                ctx.restore();
+                ctx.fillStyle = '#ef4444';
+                ctx.beginPath();
+                ctx.arc(-18, 0, 8, Math.PI * 0.5, Math.PI * 1.5);
+                ctx.fill();
+            } else if (def.isLimit) {
+                ctx.beginPath();
+                ctx.arc(-16, 0, 5, 0, Math.PI * 2);
+                ctx.stroke();
+            } else if (cols.length > 1) {
+                ctx.save();
+                ctx.setLineDash([3, 3]);
+                ctx.strokeStyle = strokeMuted;
+                ctx.beginPath();
+                ctx.moveTo(cols[0] - 5, 0); ctx.lineTo(cols[cols.length - 1], 0);
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+    } else if (def.isOverload) {
+        const tripped = isClosed;
+        ctx.beginPath();
+        ctx.moveTo(-20, -40); ctx.lineTo(-20, -16); ctx.lineTo(-14, -16);
+        ctx.moveTo(-20, 40);  ctx.lineTo(-20, 16);
+        ctx.moveTo(-20, 16);
+        if (!tripped) ctx.lineTo(-16, -18);
+        else ctx.lineTo(-30, -13);
+
+        ctx.moveTo(20, -40); ctx.lineTo(20, -16);
+        ctx.moveTo(20, 40);  ctx.lineTo(20, 16);
+        ctx.moveTo(20, 16);
+        if (tripped) ctx.lineTo(20, -16);
+        else ctx.lineTo(10, -13);
+        ctx.stroke();
+
+        ctx.save();
+        ctx.strokeStyle = tripped ? '#ef4444' : strokeMuted;
+        ctx.beginPath();
+        ctx.moveTo(-34, -8); ctx.lineTo(-28, -8); ctx.lineTo(-28, 8); ctx.lineTo(-34, 8);
+        ctx.stroke();
+        ctx.restore();
+    } else if (def.isCoil) {
+        const energized = state.isSimulating && !!state.simRuntime.coilEnergized[tagUpper];
+        const active = state.isSimulating && !!state.simRuntime.coilActive[tagUpper];
+
+        ctx.beginPath();
+        ctx.moveTo(0, -40); ctx.lineTo(0, -14);
+        ctx.moveTo(0, 40);  ctx.lineTo(0, 14);
+        ctx.stroke();
+
+        if (energized || active) {
+            ctx.fillStyle = active ? 'rgba(239, 68, 68, 0.25)' : 'rgba(245, 158, 11, 0.22)';
+            ctx.fillRect(-18, -14, 36, 28);
+            ctx.strokeStyle = active ? '#ef4444' : '#f59e0b';
+        }
+        ctx.strokeRect(-18, -14, 36, 28);
+
+        if (def.coilType === 'ton') {
+            ctx.beginPath();
+            ctx.moveTo(-18, -14); ctx.lineTo(-10, 14);
+            ctx.moveTo(-10, -14); ctx.lineTo(-18, 14);
+            ctx.stroke();
+        } else if (def.coilType === 'tof') {
+            ctx.fillStyle = strokeMain;
+            ctx.fillRect(-18, -14, 8, 28);
+        } else if (def.coilType === 'flasher') {
+            ctx.beginPath();
+            ctx.moveTo(-14, 4); ctx.lineTo(-14, -4); ctx.lineTo(-9, -4); ctx.lineTo(-9, 4);
+            ctx.stroke();
+        } else if (def.coilType === 'latch') {
+            ctx.beginPath();
+            ctx.moveTo(-18, -6); ctx.lineTo(-12, 0); ctx.lineTo(-18, 6);
+            ctx.stroke();
+        }
+    } else if (def.isContact) {
+        if (def.contactType === 'power3p') {
+            [-20, 0, 20].forEach(px => {
+                ctx.beginPath();
+                ctx.moveTo(px, -40); ctx.lineTo(px, -16);
+                ctx.moveTo(px, 40);  ctx.lineTo(px, 16);
+                ctx.moveTo(px, 16);
+                if (isClosed) ctx.lineTo(px, -16);
+                else ctx.lineTo(px - 10, -13);
+                ctx.stroke();
+            });
+            ctx.save();
+            ctx.setLineDash([3, 3]);
+            ctx.strokeStyle = strokeMuted;
+            ctx.beginPath();
+            ctx.moveTo(-25, 0); ctx.lineTo(20, 0);
+            ctx.stroke();
+            ctx.restore();
+        } else if (def.contactType === 'power3p_no' || def.contactType === 'power4p') {
+            [-40, -20, 0, 20].forEach(px => {
+                ctx.beginPath();
+                ctx.moveTo(px, -40); ctx.lineTo(px, -16);
+                ctx.moveTo(px, 40);  ctx.lineTo(px, 16);
+                ctx.moveTo(px, 16);
+                if (isClosed) ctx.lineTo(px, -16);
+                else ctx.lineTo(px - 10, -13);
+                ctx.stroke();
+            });
+            ctx.save();
+            ctx.setLineDash([3, 3]);
+            ctx.strokeStyle = strokeMuted;
+            ctx.beginPath();
+            ctx.moveTo(-45, 0); ctx.lineTo(20, 0);
+            ctx.stroke();
+            ctx.restore();
+        } else if (def.contactType === 'power4p_2no2nc') {
+            [-40, 20].forEach(px => {
+                ctx.beginPath();
+                ctx.moveTo(px, -40); ctx.lineTo(px, -16);
+                ctx.moveTo(px, 40);  ctx.lineTo(px, 16);
+                ctx.moveTo(px, 16);
+                if (isClosed) ctx.lineTo(px, -16);
+                else ctx.lineTo(px - 10, -13);
+                ctx.stroke();
+            });
+            [-20, 0].forEach(px => {
+                ctx.beginPath();
+                ctx.moveTo(px, -40); ctx.lineTo(px, -16); ctx.lineTo(px + 6, -16);
+                ctx.moveTo(px, 40);  ctx.lineTo(px, 16);
+                ctx.moveTo(px, 16);
+                if (!isClosed) ctx.lineTo(px + 4, -18);
+                else ctx.lineTo(px - 11, -13);
+                ctx.stroke();
+            });
+            ctx.save();
+            ctx.setLineDash([3, 3]);
+            ctx.strokeStyle = strokeMuted;
+            ctx.beginPath();
+            ctx.moveTo(-45, 0); ctx.lineTo(20, 0);
+            ctx.stroke();
+            ctx.restore();
+        } else if (def.contactType === 'power3p_nc') {
+            [-40, -20, 0].forEach(px => {
+                ctx.beginPath();
+                ctx.moveTo(px, -40); ctx.lineTo(px, -16);
+                ctx.moveTo(px, 40);  ctx.lineTo(px, 16);
+                ctx.moveTo(px, 16);
+                if (isClosed) ctx.lineTo(px, -16);
+                else ctx.lineTo(px - 10, -13);
+                ctx.stroke();
+            });
+            ctx.beginPath();
+            ctx.moveTo(20, -40); ctx.lineTo(20, -16); ctx.lineTo(26, -16);
+            ctx.moveTo(20, 40);  ctx.lineTo(20, 16);
+            ctx.moveTo(20, 16);
+            if (!isClosed) ctx.lineTo(24, -18);
+            else ctx.lineTo(9, -13);
+            ctx.stroke();
+
+            ctx.save();
+            ctx.setLineDash([3, 3]);
+            ctx.strokeStyle = strokeMuted;
+            ctx.beginPath();
+            ctx.moveTo(-45, 0); ctx.lineTo(22, 0);
+            ctx.stroke();
+            ctx.restore();
+        } else if (def.contactType === 'power3p_no_nc') {
+            [-40, -20, 0, 20].forEach(px => {
+                ctx.beginPath();
+                ctx.moveTo(px, -40); ctx.lineTo(px, -16);
+                ctx.moveTo(px, 40);  ctx.lineTo(px, 16);
+                ctx.moveTo(px, 16);
+                if (isClosed) ctx.lineTo(px, -16);
+                else ctx.lineTo(px - 10, -13);
+                ctx.stroke();
+            });
+            ctx.beginPath();
+            ctx.moveTo(40, -40); ctx.lineTo(40, -16); ctx.lineTo(46, -16);
+            ctx.moveTo(40, 40);  ctx.lineTo(40, 16);
+            ctx.moveTo(40, 16);
+            if (!isClosed) ctx.lineTo(44, -18);
+            else ctx.lineTo(29, -13);
+            ctx.stroke();
+
+            ctx.save();
+            ctx.setLineDash([3, 3]);
+            ctx.strokeStyle = strokeMuted;
+            ctx.beginPath();
+            ctx.moveTo(-45, 0); ctx.lineTo(42, 0);
+            ctx.stroke();
+            ctx.restore();
+        } else if (def.contactType === 'no') {
+            ctx.beginPath();
+            ctx.moveTo(0, -40); ctx.lineTo(0, -16);
+            ctx.moveTo(0, 40);  ctx.lineTo(0, 16);
+            ctx.moveTo(0, 16);
+            if (isClosed) ctx.lineTo(0, -16);
+            else ctx.lineTo(-10, -13);
+            ctx.stroke();
+
+            if (def.timerSymbol === 'ton') {
+                ctx.beginPath();
+                ctx.arc(-8, 4, 6, Math.PI * 0.5, Math.PI * 1.5);
+                ctx.stroke();
+            }
+        } else if (def.contactType === 'nc') {
+            ctx.beginPath();
+            ctx.moveTo(0, -40); ctx.lineTo(0, -16); ctx.lineTo(6, -16);
+            ctx.moveTo(0, 40);  ctx.lineTo(0, 16);
+            ctx.moveTo(0, 16);
+            if (!isClosed) ctx.lineTo(4, -18);
+            else ctx.lineTo(-10, -13);
+            ctx.stroke();
+
+            if (def.timerSymbol === 'ton') {
+                ctx.beginPath();
+                ctx.arc(-8, 4, 6, Math.PI * 0.5, Math.PI * 1.5);
+                ctx.stroke();
+            }
+        } else if (def.contactType === 'co') {
+            ctx.beginPath();
+            ctx.moveTo(0, -40);   ctx.lineTo(0, -14);
+            ctx.moveTo(-20, 40);  ctx.lineTo(-20, 16); ctx.lineTo(-12, 16);
+            ctx.moveTo(20, 40);   ctx.lineTo(20, 16);  ctx.lineTo(12, 16);
+            ctx.moveTo(0, -14);
+            if (!isClosed) ctx.lineTo(-14, 18);
+            else ctx.lineTo(14, 16);
+            ctx.stroke();
+        }
+    } else if (def.isMotor) {
+        const mState = state.isSimulating ? state.simRuntime.motorStates[comp.id] : null;
+        const running = mState && mState.running;
+
+        for (const t of def.terminals) {
+            ctx.beginPath();
+            if (t.id === 'PE') {
+                ctx.moveTo(26, 0); ctx.lineTo(40, 0);
+            } else if (t.y < 0) {
+                ctx.moveTo(t.x, t.y); ctx.lineTo(t.x, -22);
+            } else {
+                ctx.moveTo(t.x, t.y); ctx.lineTo(t.x, 22);
+            }
+            ctx.stroke();
+        }
+
+        if (running) {
+            ctx.fillStyle = 'rgba(16, 185, 129, 0.16)';
+            ctx.strokeStyle = '#10b981';
+        } else {
+            ctx.fillStyle = isDark ? '#111827' : '#ffffff';
+        }
+        ctx.beginPath();
+        ctx.arc(0, 0, 26, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        if (running) {
+            ctx.save();
+            const ang = (mState.dir === 'CCW' ? -1 : 1) * state.simRuntime.motorAngle;
+            ctx.rotate(ang);
+            ctx.strokeStyle = 'rgba(16, 185, 129, 0.55)';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(-20, 0); ctx.lineTo(20, 0);
+            ctx.moveTo(0, -20); ctx.lineTo(0, 20);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        ctx.fillStyle = running ? '#10b981' : strokeMain;
+        ctx.font = 'bold 13px "Inter", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(def.motorType === 'dc' ? 'M=' : 'M', 0, -2);
+        ctx.font = 'bold 9px "JetBrains Mono", monospace';
+        ctx.fillText(def.motorType === 'dc' ? 'DC' : def.motorType === '1p' ? '1~' : def.motorType === '3p_2spd' ? '3~ 2S' : '3~', 0, 11);
+    } else if (def.isLamp) {
+        const lit = state.isSimulating && !!state.simRuntime.lampStates[comp.id];
+        const lampColor = comp.color || def.defaultColor || '#22c55e';
+
+        ctx.beginPath();
+        ctx.moveTo(0, -40); ctx.lineTo(0, -16);
+        ctx.moveTo(0, 40);  ctx.lineTo(0, 16);
+        ctx.stroke();
+
+        if (lit) {
+            ctx.save();
+            ctx.shadowColor = lampColor;
+            ctx.shadowBlur = 18;
+            ctx.fillStyle = lampColor;
+            ctx.beginPath();
+            ctx.arc(0, 0, 16, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        } else {
+            ctx.fillStyle = isDark ? '#1e293b' : '#f1f5f9';
+            ctx.beginPath();
+            ctx.arc(0, 0, 16, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        ctx.strokeStyle = lit ? '#ffffff' : strokeMain;
+        ctx.beginPath();
+        ctx.arc(0, 0, 16, 0, Math.PI * 2);
+        ctx.moveTo(-11, -11); ctx.lineTo(11, 11);
+        ctx.moveTo(11, -11);  ctx.lineTo(-11, 11);
+        ctx.stroke();
+    } else if (def.isBuzzer) {
+        const active = state.isSimulating && state.simRuntime.buzzerActive;
+        ctx.beginPath();
+        ctx.moveTo(0, -40); ctx.lineTo(0, -14);
+        ctx.moveTo(0, 40);  ctx.lineTo(0, 14);
+        ctx.stroke();
+
+        ctx.fillStyle = active ? '#f59e0b' : (isDark ? '#1e293b' : '#f1f5f9');
+        ctx.beginPath();
+        ctx.moveTo(-14, -14); ctx.lineTo(14, -14); ctx.lineTo(14, 14); ctx.lineTo(-14, 14);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+    } else if (def.isDiode) {
+        ctx.beginPath();
+        ctx.moveTo(0, -40); ctx.lineTo(0, -10);
+        ctx.moveTo(0, 40);  ctx.lineTo(0, 10);
+        ctx.moveTo(-10, 10); ctx.lineTo(10, 10);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(-10, -10); ctx.lineTo(10, -10); ctx.lineTo(0, 10);
+        ctx.closePath();
+        ctx.fill();
+    } else if (def.isLabel) {
+        ctx.font = 'bold 12px "Inter", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = isDark ? '#93c5fd' : '#1d4ed8';
+        ctx.fillText(comp.comment || comp.tag || 'SECTION TITLE', 0, 0);
+    }
+
     ctx.restore();
 
     if (!def.isLabel && tag) {
@@ -2394,10 +2504,51 @@ function drawComponent(ctx, comp, isSelected) {
         }
     }
 
-    drawComponentBadges(ctx, comp, def, tagUpper);
+    if (state.isSimulating && def.isSwitch && def.switchType === 'twostep_nonc') {
+        const step = comp.step || 0;
+        const badgeLabel = step === 0 ? 'OFF (0)' : step === 1 ? 'LOW (1)' : 'HIGH (2)';
+        ctx.fillStyle = step === 0 ? '#475569' : step === 1 ? '#059669' : '#d97706';
+        roundRectPath(ctx, -28, -58, 56, 15, 4);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 9px "JetBrains Mono", monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(badgeLabel, 0, -50.5);
+    }
+
+    if (state.isSimulating && def.isCoil && (def.coilType === 'ton' || def.coilType === 'tof')) {
+        const delay = Number(comp.delay ?? def.defaultDelay ?? 3.0);
+        const elapsed = Number(state.simRuntime.coilTimers[tagUpper] || 0);
+        const remaining = def.coilType === 'ton' ? Math.max(0, delay - elapsed) : elapsed;
+        ctx.fillStyle = '#2563eb';
+        roundRectPath(ctx, -24, -32, 48, 15, 4);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 9px "JetBrains Mono", monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`${remaining.toFixed(1)}s`, 0, -24.5);
+    }
+
+    if (state.isSimulating && def.isMotor) {
+        const mState = state.simRuntime.motorStates[comp.id];
+        if (mState && mState.running) {
+            ctx.fillStyle = mState.mode === 'HIGH' ? '#d97706' : '#059669';
+            roundRectPath(ctx, -38, 46, 76, 16, 4);
+            ctx.fill();
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 9px "JetBrains Mono", monospace';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(`${mState.dir} · ${mState.mode}`, 0, 54);
+        }
+    }
+
     ctx.restore();
 
-    for (const t of getComponentTerminalsWorld(comp)) {
+    const terms = getComponentTerminalsWorld(comp);
+    for (const t of terms) {
         const isHovered = state.hoveredTerminal && state.hoveredTerminal.compId === t.compId && state.hoveredTerminal.termId === t.termId;
         ctx.save();
         ctx.fillStyle = isHovered ? '#3b82f6' : (isDark ? '#38bdf8' : '#0284c7');
@@ -2416,37 +2567,54 @@ function drawComponent(ctx, comp, isSelected) {
     }
 }
 
-function drawGrid(ctx, w, h, isDark) {
-    if (!state.snapToGrid) return;
-    const left = -state.view.x / state.view.zoom;
-    const top = -state.view.y / state.view.zoom;
-    const right = left + w / state.view.zoom;
-    const bottom = top + h / state.view.zoom;
-    const startX = Math.floor(left / GRID_SIZE) * GRID_SIZE;
-    const startY = Math.floor(top / GRID_SIZE) * GRID_SIZE;
+function render() {
+    const canvas = document.getElementById('cad-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.width / dpr;
+    const h = canvas.height / dpr;
+    const isDark = state.darkMode;
 
-    ctx.lineWidth = 1 / state.view.zoom;
-    for (let gx = startX; gx <= right; gx += GRID_SIZE) {
-        ctx.strokeStyle = gx % 100 === 0
-            ? (isDark ? '#1e293b' : '#cbd5e1')
-            : (isDark ? '#131b2e' : '#e2e8f0');
-        ctx.beginPath();
-        ctx.moveTo(gx, top);
-        ctx.lineTo(gx, bottom);
-        ctx.stroke();
-    }
-    for (let gy = startY; gy <= bottom; gy += GRID_SIZE) {
-        ctx.strokeStyle = gy % 100 === 0
-            ? (isDark ? '#1e293b' : '#cbd5e1')
-            : (isDark ? '#131b2e' : '#e2e8f0');
-        ctx.beginPath();
-        ctx.moveTo(left, gy);
-        ctx.lineTo(right, gy);
-        ctx.stroke();
-    }
-}
+    ctx.save();
+    ctx.scale(dpr, dpr);
 
-function drawWires(ctx) {
+    ctx.fillStyle = isDark ? '#0b0f19' : '#f8fafc';
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.translate(state.view.x, state.view.y);
+    ctx.scale(state.view.zoom, state.view.zoom);
+
+    if (state.snapToGrid) {
+        const left = -state.view.x / state.view.zoom;
+        const top = -state.view.y / state.view.zoom;
+        const right = left + w / state.view.zoom;
+        const bottom = top + h / state.view.zoom;
+
+        const startX = Math.floor(left / GRID_SIZE) * GRID_SIZE;
+        const startY = Math.floor(top / GRID_SIZE) * GRID_SIZE;
+
+        ctx.lineWidth = 1 / state.view.zoom;
+        for (let gx = startX; gx <= right; gx += GRID_SIZE) {
+            ctx.strokeStyle = (gx % 100 === 0)
+                ? (isDark ? '#1e293b' : '#cbd5e1')
+                : (isDark ? '#131b2e' : '#e2e8f0');
+            ctx.beginPath();
+            ctx.moveTo(gx, top);
+            ctx.lineTo(gx, bottom);
+            ctx.stroke();
+        }
+        for (let gy = startY; gy <= bottom; gy += GRID_SIZE) {
+            ctx.strokeStyle = (gy % 100 === 0)
+                ? (isDark ? '#1e293b' : '#cbd5e1')
+                : (isDark ? '#131b2e' : '#e2e8f0');
+            ctx.beginPath();
+            ctx.moveTo(left, gy);
+            ctx.lineTo(right, gy);
+            ctx.stroke();
+        }
+    }
+
     for (const wire of state.wires) {
         const pts = wire.points || [];
         if (pts.length < 2) continue;
@@ -2511,28 +2679,6 @@ function drawWires(ctx) {
 
         ctx.restore();
     }
-}
-
-function render() {
-    const canvas = document.getElementById('cad-canvas');
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    const dpr = window.devicePixelRatio || 1;
-    const w = canvas.width / dpr;
-    const h = canvas.height / dpr;
-    const isDark = state.darkMode;
-
-    ctx.save();
-    ctx.scale(dpr, dpr);
-
-    ctx.fillStyle = isDark ? '#0b0f19' : '#f8fafc';
-    ctx.fillRect(0, 0, w, h);
-
-    ctx.translate(state.view.x, state.view.y);
-    ctx.scale(state.view.zoom, state.view.zoom);
-
-    drawGrid(ctx, w, h, isDark);
-    drawWires(ctx);
 
     if (state.drawingWire && state.drawingWire.points.length > 0) {
         const pts = state.drawingWire.points;
@@ -2551,7 +2697,9 @@ function render() {
         ctx.beginPath();
         ctx.moveTo(pts[0].x, pts[0].y);
         for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-        if (target.x !== last.x && target.y !== last.y) ctx.lineTo(target.x, last.y);
+        if (target.x !== last.x && target.y !== last.y) {
+            ctx.lineTo(target.x, last.y);
+        }
         ctx.lineTo(target.x, target.y);
         ctx.stroke();
         ctx.restore();
@@ -2566,7 +2714,8 @@ function render() {
         ctx.restore();
     }
 
-    for (const j of computeJunctionDots()) {
+    const junctions = computeJunctionDots();
+    for (const j of junctions) {
         ctx.save();
         ctx.fillStyle = isDark ? '#f8fafc' : '#0f172a';
         ctx.beginPath();
@@ -2592,16 +2741,15 @@ function mainLoop(now) {
     requestAnimationFrame(mainLoop);
 }
 
-// =========================================================================
-// EDITING ACTIONS & INSPECTOR
-// =========================================================================
 function generateNextTag(baseTag) {
     const match = baseTag.match(/^([A-Za-z]+)(\d*)$/);
     if (!match) return baseTag;
     const prefix = match[1];
     const used = new Set(state.components.map(c => (c.tag || '').toUpperCase()));
     let num = parseInt(match[2] || '1', 10);
-    while (used.has(`${prefix}${num}`.toUpperCase())) num++;
+    while (used.has(`${prefix}${num}`.toUpperCase())) {
+        num++;
+    }
     return `${prefix}${num}`;
 }
 
@@ -2636,7 +2784,9 @@ function addComponentAt(type, wx, wy) {
 
 function rotateSelected() {
     if (state.isSimulating || state.selectedIds.size === 0) return;
-    const compIds = new Set(state.components.filter(c => state.selectedIds.has(c.id)).map(c => c.id));
+    const compIds = new Set(
+        state.components.filter(c => state.selectedIds.has(c.id)).map(c => c.id)
+    );
     if (compIds.size === 0) return;
 
     const attachments = captureTerminalWireAttachments(compIds);
@@ -2688,7 +2838,11 @@ function deleteSelected() {
 function updateFloatingActions() {
     const bar = document.getElementById('floating-quick-actions');
     if (!bar) return;
-    bar.classList.toggle('hidden', state.isSimulating || state.selectedIds.size === 0);
+    if (!state.isSimulating && state.selectedIds.size > 0) {
+        bar.classList.remove('hidden');
+    } else {
+        bar.classList.add('hidden');
+    }
 }
 
 function setInspectorDirty(dirty) {
@@ -2719,13 +2873,13 @@ function highlightActiveColorSwatch(colorVal) {
 function highlightActiveRotationBtn(rotVal) {
     document.querySelectorAll('.rot-btn').forEach(btn => {
         const isMatch = parseInt(btn.dataset.rot, 10) === (rotVal || 0);
-        btn.classList.toggle('bg-blue-600', isMatch);
-        btn.classList.toggle('text-white', isMatch);
-        btn.classList.toggle('border-blue-400', isMatch);
-        btn.classList.toggle('bg-slate-100', !isMatch);
-        btn.classList.toggle('dark:bg-slate-800', !isMatch);
-        btn.classList.toggle('text-slate-900', !isMatch);
-        btn.classList.toggle('dark:text-white', !isMatch);
+        if (isMatch) {
+            btn.classList.remove('bg-slate-100', 'dark:bg-slate-800', 'text-slate-900', 'dark:text-white');
+            btn.classList.add('bg-blue-600', 'text-white', 'border-blue-400');
+        } else {
+            btn.classList.remove('bg-blue-600', 'text-white', 'border-blue-400');
+            btn.classList.add('bg-slate-100', 'dark:bg-slate-800', 'text-slate-900', 'dark:text-white');
+        }
     });
 }
 
@@ -2813,22 +2967,33 @@ function populateInspector() {
         rotGrp.classList.remove('hidden');
         highlightActiveRotationBtn(state.inspectorDraft.rotation);
 
-        xfmrGrp.classList.toggle('hidden', !(def && def.isTransformer));
         if (def && def.isTransformer) {
+            xfmrGrp.classList.remove('hidden');
             document.getElementById('prop-pri-v').value = state.inspectorDraft.primaryV;
             document.getElementById('prop-sec-v').value = state.inspectorDraft.secondaryV;
+        } else {
+            xfmrGrp.classList.add('hidden');
         }
 
-        const hasDelay = !!(def && def.isCoil && ['ton', 'tof', 'flasher'].includes(def.coilType));
-        timerGrp.classList.toggle('hidden', !hasDelay);
-        if (hasDelay) document.getElementById('prop-delay').value = state.inspectorDraft.delay;
+        if (def && def.isCoil && (def.coilType === 'ton' || def.coilType === 'tof' || def.coilType === 'flasher')) {
+            timerGrp.classList.remove('hidden');
+            document.getElementById('prop-delay').value = state.inspectorDraft.delay;
+        } else {
+            timerGrp.classList.add('hidden');
+        }
 
-        colorGrp.classList.toggle('hidden', !(def && def.isLamp));
-        if (def && def.isLamp) highlightActiveColorSwatch(state.inspectorDraft.color);
+        if (def && def.isLamp) {
+            colorGrp.classList.remove('hidden');
+            highlightActiveColorSwatch(state.inspectorDraft.color);
+        } else {
+            colorGrp.classList.add('hidden');
+        }
 
-        stateGrp.classList.toggle('hidden', !(def && (def.isSwitch || def.isOverload)));
         if (def && (def.isSwitch || def.isOverload)) {
+            stateGrp.classList.remove('hidden');
             document.getElementById('prop-latched').checked = state.inspectorDraft.closed;
+        } else {
+            stateGrp.classList.add('hidden');
         }
 
         const termList = document.getElementById('prop-terminals-list');
@@ -2879,7 +3044,8 @@ function applyInspectorChanges() {
         const comp = state.components.find(c => c.id === state.inspectorDraft.id);
         if (!comp) return;
         const def = CATALOG[comp.type];
-        const attachments = captureTerminalWireAttachments(new Set([comp.id]));
+        const compSet = new Set([comp.id]);
+        const attachments = captureTerminalWireAttachments(compSet);
 
         comp.tag = document.getElementById('prop-tag').value.trim();
         comp.comment = document.getElementById('prop-comment').value.trim();
@@ -2888,19 +3054,21 @@ function applyInspectorChanges() {
         if (def && def.isTransformer) {
             const rawPri = parseFloat(document.getElementById('prop-pri-v').value);
             const rawSec = parseFloat(document.getElementById('prop-sec-v').value);
-            comp.primaryV = Math.max(1, Number.isNaN(rawPri) ? 230 : rawPri);
-            comp.secondaryV = Math.max(1, Number.isNaN(rawSec) ? 24 : rawSec);
+            comp.primaryV = Math.max(1, isNaN(rawPri) ? 230 : rawPri);
+            comp.secondaryV = Math.max(1, isNaN(rawSec) ? 24 : rawSec);
         }
-        if (def && def.isCoil && ['ton', 'tof', 'flasher'].includes(def.coilType)) {
+        if (def && def.isCoil && (def.coilType === 'ton' || def.coilType === 'tof' || def.coilType === 'flasher')) {
             const rawDelay = parseFloat(document.getElementById('prop-delay').value);
-            comp.delay = Math.max(0.2, Number.isNaN(rawDelay) ? 3.0 : rawDelay);
+            comp.delay = Math.max(0.2, isNaN(rawDelay) ? 3.0 : rawDelay);
         }
         if (def && def.isLamp) {
             comp.color = state.inspectorDraft.color;
         }
         if (def && (def.isSwitch || def.isOverload)) {
             comp.closed = document.getElementById('prop-latched').checked;
-            if (def.switchType === 'twostep_nonc') comp.step = comp.closed ? 2 : 0;
+            if (def.switchType === 'twostep_nonc') {
+                comp.step = comp.closed ? 2 : 0;
+            }
         }
         comp.terminalLabels = JSON.parse(JSON.stringify(state.inspectorDraft.terminalLabels || {}));
         applyTerminalWireAttachments(attachments, true);
@@ -2908,18 +3076,27 @@ function applyInspectorChanges() {
 
     setInspectorDirty(false);
     pushHistory();
-    if (state.isSimulating) stepSimulation(0.016);
+    if (state.isSimulating) {
+        stepSimulation(0.016);
+    }
     render();
     showToast('Changes applied');
 }
 
+let activeMomentaryComp = null;
+
 function setTool(toolName) {
     state.tool = toolName;
     state.drawingWire = null;
-    const activeCls = 'touch-target px-2.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 bg-white dark:bg-slate-700 shadow-sm text-blue-600 dark:text-blue-400';
-    const inactiveCls = 'touch-target px-2.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white';
-    document.getElementById('tool-select').className = toolName === 'select' ? activeCls : inactiveCls;
-    document.getElementById('tool-wire').className = toolName === 'wire' ? activeCls : inactiveCls;
+    const btnSel = document.getElementById('tool-select');
+    const btnWire = document.getElementById('tool-wire');
+    if (toolName === 'select') {
+        btnSel.className = 'touch-target px-2.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 bg-white dark:bg-slate-700 shadow-sm text-blue-600 dark:text-blue-400';
+        btnWire.className = 'touch-target px-2.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white';
+    } else {
+        btnWire.className = 'touch-target px-2.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 bg-white dark:bg-slate-700 shadow-sm text-blue-600 dark:text-blue-400';
+        btnSel.className = 'touch-target px-2.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white';
+    }
     render();
 }
 
@@ -2973,151 +3150,6 @@ function fitSchematicToScreen() {
     render();
 }
 
-// =========================================================================
-// POINTER & KEYBOARD INTERACTIONS
-// =========================================================================
-function handleSimulationPointerDown(e, world) {
-    const comp = findComponentAt(world.x, world.y);
-    if (comp) {
-        const def = CATALOG[comp.type];
-        if (def && (def.isSwitch || def.isOverload)) {
-            ensureAudioReady();
-            playClickSound();
-            if (def.switchType === 'twostep_nonc') {
-                const nextStep = ((comp.step || 0) + 1) % 3;
-                comp.step = nextStep;
-                comp.closed = nextStep > 0;
-            } else if (def.switchType === 'momentary_no' || def.switchType === 'momentary_nonc') {
-                comp.closed = true;
-                activeMomentaryComp = comp;
-            } else if (def.switchType === 'momentary_nc') {
-                comp.closed = false;
-                activeMomentaryComp = comp;
-            } else {
-                comp.closed = !comp.closed;
-            }
-            state.simRuntime.lastTick = performance.now();
-            stepSimulation(0.016);
-            render();
-            return true;
-        }
-    }
-    state.panning = { startX: e.clientX - state.view.x, startY: e.clientY - state.view.y };
-    return true;
-}
-
-function handleWireToolPointerDown(world, hitTerm, hitWireTap) {
-    const startPt = hitTerm
-        ? { x: hitTerm.x, y: hitTerm.y }
-        : hitWireTap
-            ? { x: hitWireTap.x, y: hitWireTap.y }
-            : { x: snapVal(world.x), y: snapVal(world.y) };
-
-    if (!state.drawingWire) {
-        state.drawingWire = { points: [startPt] };
-    } else {
-        const pts = state.drawingWire.points;
-        const last = pts[pts.length - 1];
-        if (last.x !== startPt.x && last.y !== startPt.y) {
-            pts.push({ x: startPt.x, y: last.y });
-        }
-        const prev = pts[pts.length - 1];
-        if (prev.x !== startPt.x || prev.y !== startPt.y) {
-            pts.push(startPt);
-        }
-
-        if (hitTerm || hitWireTap || (last.x === startPt.x && last.y === startPt.y)) {
-            const cleanPts = simplifyWirePoints(pts);
-            if (cleanPts.length >= 2) {
-                const newWire = {
-                    id: genId('wire'),
-                    potential: state.activeWirePotential,
-                    points: cleanPts,
-                    tag: '',
-                    comment: ''
-                };
-                state.wires.push(newWire);
-                state.selectedIds.clear();
-                state.selectedIds.add(newWire.id);
-                pushHistory();
-                updateFloatingActions();
-                refreshInspectorIfOpen();
-            }
-            state.drawingWire = null;
-        }
-    }
-    render();
-}
-
-function handleWireDragMove(dw, rawDx, rawDy, dx, dy) {
-    const orig = dw.origPoints;
-    const newPts = JSON.parse(JSON.stringify(orig));
-
-    if (dw.mode === 'vertex') {
-        const idx = dw.vertexIndex;
-        const isEnd = idx === 0 || idx === orig.length - 1;
-        const snapTarget = findTerminalAt(orig[idx].x + rawDx, orig[idx].y + rawDy, getHitTolerance(13, 20))
-            || (isEnd ? findWireTapPointAt(orig[idx].x + rawDx, orig[idx].y + rawDy, getHitTolerance(11, 18), dw.wire.id) : null);
-        const tx = snapTarget ? snapTarget.x : orig[idx].x + dx;
-        const ty = snapTarget ? snapTarget.y : orig[idx].y + dy;
-
-        newPts[idx] = { x: tx, y: ty };
-
-        if (idx > 0 && idx < orig.length - 1) {
-            const prevOrig = orig[idx - 1];
-            const nextOrig = orig[idx + 1];
-            if (prevOrig.x === orig[idx].x && idx - 1 > 0) newPts[idx - 1].x = tx;
-            else if (prevOrig.y === orig[idx].y && idx - 1 > 0) newPts[idx - 1].y = ty;
-
-            if (nextOrig.x === orig[idx].x && idx + 1 < orig.length - 1) newPts[idx + 1].x = tx;
-            else if (nextOrig.y === orig[idx].y && idx + 1 < orig.length - 1) newPts[idx + 1].y = ty;
-        }
-    } else if (dw.mode === 'segment') {
-        const sIdx = dw.segIndex;
-        const pA = orig[sIdx];
-        const pB = orig[sIdx + 1];
-
-        if (!dw.startAnchored && !dw.endAnchored) {
-            for (let i = 0; i < newPts.length; i++) {
-                newPts[i].x = orig[i].x + dx;
-                newPts[i].y = orig[i].y + dy;
-            }
-        } else {
-            const isHoriz = pA.y === pB.y && pA.x !== pB.x;
-            const isVert = pA.x === pB.x && pA.y !== pB.y;
-
-            if (isHoriz) {
-                newPts[sIdx].y = pA.y + dy;
-                newPts[sIdx + 1].y = pB.y + dy;
-                if (sIdx > 0) newPts[sIdx].x = pA.x + dx;
-                if (sIdx + 1 < orig.length - 1) newPts[sIdx + 1].x = pB.x + dx;
-                if (sIdx === 0 && dw.startAnchored) newPts.unshift({ x: pA.x, y: pA.y });
-                if (sIdx + 1 === orig.length - 1 && dw.endAnchored) newPts.push({ x: pB.x, y: pB.y });
-            } else if (isVert) {
-                newPts[sIdx].x = pA.x + dx;
-                newPts[sIdx + 1].x = pB.x + dx;
-                if (sIdx > 0) newPts[sIdx].y = pA.y + dy;
-                if (sIdx + 1 < orig.length - 1) newPts[sIdx + 1].y = pB.y + dy;
-                if (sIdx === 0 && dw.startAnchored) newPts.unshift({ x: pA.x, y: pA.y });
-                if (sIdx + 1 === orig.length - 1 && dw.endAnchored) newPts.push({ x: pB.x, y: pB.y });
-            } else {
-                if (!(sIdx === 0 && dw.startAnchored)) {
-                    newPts[sIdx].x = pA.x + dx;
-                    newPts[sIdx].y = pA.y + dy;
-                }
-                if (!(sIdx + 1 === orig.length - 1 && dw.endAnchored)) {
-                    newPts[sIdx + 1].x = pB.x + dx;
-                    newPts[sIdx + 1].y = pB.y + dy;
-                }
-            }
-        }
-    }
-
-    dw.wire.points = newPts;
-    if (dx !== 0 || dy !== 0) dw.moved = true;
-    render();
-}
-
 function setupCanvasInteractions() {
     const canvas = document.getElementById('cad-canvas');
     const wrapper = document.getElementById('canvas-wrapper');
@@ -3142,7 +3174,9 @@ function setupCanvasInteractions() {
     wrapper.addEventListener('dragleave', (e) => {
         if (e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files')) {
             dragFileCounter = Math.max(0, dragFileCounter - 1);
-            if (dragFileCounter === 0 && dropOverlay) dropOverlay.classList.add('hidden');
+            if (dragFileCounter === 0 && dropOverlay) {
+                dropOverlay.classList.add('hidden');
+            }
         }
     });
 
@@ -3151,7 +3185,8 @@ function setupCanvasInteractions() {
             e.preventDefault();
             dragFileCounter = 0;
             if (dropOverlay) dropOverlay.classList.add('hidden');
-            readAndLoadJsonFile(e.dataTransfer.files[0]);
+            const file = e.dataTransfer.files[0];
+            readAndLoadJsonFile(file);
         }
     });
 
@@ -3164,8 +3199,6 @@ function setupCanvasInteractions() {
     });
 
     canvas.addEventListener('pointerdown', (e) => {
-        if (isResourcesSidebarOpen()) closeResourcesSidebar();
-
         try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
         state.activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
@@ -3200,7 +3233,40 @@ function setupCanvasInteractions() {
         state.mouseWorld = world;
 
         if (state.isSimulating) {
-            handleSimulationPointerDown(e, world);
+            const comp = findComponentAt(world.x, world.y);
+            if (comp) {
+                const def = CATALOG[comp.type];
+                if (def && def.isSwitch) {
+                    ensureAudioReady();
+                    playClickSound();
+                    if (def.switchType === 'twostep_nonc') {
+                        const nextStep = ((comp.step || 0) + 1) % 3;
+                        comp.step = nextStep;
+                        comp.closed = nextStep > 0;
+                    } else if (def.switchType === 'momentary_no' || def.switchType === 'momentary_nonc') {
+                        comp.closed = true;
+                        activeMomentaryComp = comp;
+                    } else if (def.switchType === 'momentary_nc') {
+                        comp.closed = false;
+                        activeMomentaryComp = comp;
+                    } else {
+                        comp.closed = !comp.closed;
+                    }
+                    state.simRuntime.lastTick = performance.now();
+                    stepSimulation(0.016);
+                    render();
+                    return;
+                } else if (def && def.isOverload) {
+                    ensureAudioReady();
+                    playClickSound();
+                    comp.closed = !comp.closed;
+                    state.simRuntime.lastTick = performance.now();
+                    stepSimulation(0.016);
+                    render();
+                    return;
+                }
+            }
+            state.panning = { startX: e.clientX - state.view.x, startY: e.clientY - state.view.y };
             return;
         }
 
@@ -3210,12 +3276,54 @@ function setupCanvasInteractions() {
         }
 
         const hitTerm = findTerminalAt(world.x, world.y, getHitTolerance(14, 21));
-        const hitWireTap = (!hitTerm && (state.tool === 'wire' || state.drawingWire))
-            ? findWireTapPointAt(world.x, world.y, getHitTolerance(11, 18))
-            : null;
+        const hitWireTap = !hitTerm && state.tool === 'wire' ? findWireTapAt(world.x, world.y, getHitTolerance(12, 18)) : null;
 
-        if (state.tool === 'wire' || hitTerm || (state.drawingWire && hitWireTap)) {
-            handleWireToolPointerDown(world, hitTerm, hitWireTap);
+        if (state.tool === 'wire' || hitTerm) {
+            const startPt = hitTerm
+                ? { x: hitTerm.x, y: hitTerm.y }
+                : hitWireTap
+                    ? { x: hitWireTap.x, y: hitWireTap.y }
+                    : { x: snapVal(world.x), y: snapVal(world.y) };
+
+            if (!state.drawingWire) {
+                if (hitWireTap && hitWireTap.isTap) {
+                    splitWireAtPoint(startPt.x, startPt.y);
+                }
+                state.drawingWire = { points: [startPt] };
+            } else {
+                const pts = state.drawingWire.points;
+                const last = pts[pts.length - 1];
+                if (last.x !== startPt.x && last.y !== startPt.y) {
+                    pts.push({ x: startPt.x, y: last.y });
+                }
+                const prev = pts[pts.length - 1];
+                if (prev.x !== startPt.x || prev.y !== startPt.y) {
+                    pts.push(startPt);
+                }
+
+                if (hitTerm || hitWireTap || (last.x === startPt.x && last.y === startPt.y)) {
+                    const cleanPts = simplifyWirePoints(pts);
+                    if (cleanPts.length >= 2) {
+                        const newWire = {
+                            id: genId('wire'),
+                            potential: state.activeWirePotential,
+                            points: cleanPts,
+                            tag: '',
+                            comment: ''
+                        };
+                        splitWireAtPoint(cleanPts[0].x, cleanPts[0].y, newWire.id);
+                        splitWireAtPoint(cleanPts[cleanPts.length - 1].x, cleanPts[cleanPts.length - 1].y, newWire.id);
+                        state.wires.push(newWire);
+                        state.selectedIds.clear();
+                        state.selectedIds.add(newWire.id);
+                        pushHistory();
+                        updateFloatingActions();
+                        refreshInspectorIfOpen();
+                    }
+                    state.drawingWire = null;
+                }
+            }
+            render();
             return;
         }
 
@@ -3226,10 +3334,14 @@ function setupCanvasInteractions() {
                 state.selectedIds.add(hitComp.id);
             }
 
-            const draggedCompIds = new Set(state.components.filter(c => state.selectedIds.has(c.id)).map(c => c.id));
+            const draggedCompIds = new Set(
+                state.components.filter(c => state.selectedIds.has(c.id)).map(c => c.id)
+            );
             const initialCompPos = new Map();
             for (const c of state.components) {
-                if (draggedCompIds.has(c.id)) initialCompPos.set(c.id, { x: c.x, y: c.y });
+                if (draggedCompIds.has(c.id)) {
+                    initialCompPos.set(c.id, { x: c.x, y: c.y });
+                }
             }
 
             const attachments = captureTerminalWireAttachments(draggedCompIds);
@@ -3267,25 +3379,39 @@ function setupCanvasInteractions() {
 
             const allTermCoords = new Set();
             for (const c of state.components) {
-                for (const t of getComponentTerminalsWorld(c)) allTermCoords.add(`${t.x},${t.y}`);
+                for (const t of getComponentTerminalsWorld(c)) {
+                    allTermCoords.add(`${t.x},${t.y}`);
+                }
             }
             const pts = w.points;
             const startAnchored = pts.length > 0 && allTermCoords.has(`${Math.round(pts[0].x)},${Math.round(pts[0].y)}`);
             const endAnchored = pts.length > 1 && allTermCoords.has(`${Math.round(pts[pts.length - 1].x)},${Math.round(pts[pts.length - 1].y)}`);
 
             let workingPts = JSON.parse(JSON.stringify(pts));
+            let activeMode = wireHit.hitType;
+            let activeVertex = wireHit.vertexIndex;
             let activeSeg = wireHit.segIndex;
 
-            if (wireHit.hitType === 'segment' && workingPts.length === 2 && (startAnchored || endAnchored)) {
+            if (activeMode === 'segment' && workingPts.length === 2 && (startAnchored || endAnchored)) {
                 const p0 = workingPts[0];
                 const p1 = workingPts[1];
                 const midX = snapVal((p0.x + p1.x) / 2);
                 const midY = snapVal((p0.y + p1.y) / 2);
                 if (p0.x === p1.x) {
-                    workingPts = [{ x: p0.x, y: p0.y }, { x: p0.x, y: midY }, { x: p1.x, y: midY }, { x: p1.x, y: p1.y }];
+                    workingPts = [
+                        { x: p0.x, y: p0.y },
+                        { x: p0.x, y: midY },
+                        { x: p1.x, y: midY },
+                        { x: p1.x, y: p1.y }
+                    ];
                     activeSeg = 1;
                 } else if (p0.y === p1.y) {
-                    workingPts = [{ x: p0.x, y: p0.y }, { x: midX, y: p0.y }, { x: midX, y: p1.y }, { x: p1.x, y: p1.y }];
+                    workingPts = [
+                        { x: p0.x, y: p0.y },
+                        { x: midX, y: p0.y },
+                        { x: midX, y: p1.y },
+                        { x: p1.x, y: p1.y }
+                    ];
                     activeSeg = 1;
                 }
                 w.points = JSON.parse(JSON.stringify(workingPts));
@@ -3293,8 +3419,8 @@ function setupCanvasInteractions() {
 
             state.draggingWire = {
                 wire: w,
-                mode: wireHit.hitType,
-                vertexIndex: wireHit.vertexIndex,
+                mode: activeMode,
+                vertexIndex: activeVertex,
                 segIndex: activeSeg,
                 startWorld: { x: world.x, y: world.y },
                 origPoints: workingPts,
@@ -3327,7 +3453,8 @@ function setupCanvasInteractions() {
             const midX = (pts[0].x + pts[1].x) / 2 - rect.left;
             const midY = (pts[0].y + pts[1].y) / 2 - rect.top;
             const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
-            const newZoom = Math.min(3.0, Math.max(0.3, state.pinchState.initialZoom * (dist / state.pinchState.initialDist)));
+            const scale = dist / state.pinchState.initialDist;
+            const newZoom = Math.min(3.0, Math.max(0.3, state.pinchState.initialZoom * scale));
 
             state.view.zoom = newZoom;
             state.view.x = midX - state.pinchState.worldMidX * newZoom;
@@ -3343,7 +3470,7 @@ function setupCanvasInteractions() {
 
         state.hoveredTerminal = findTerminalAt(world.x, world.y, getHitTolerance(13, 20));
         state.hoveredWirePoint = (!state.hoveredTerminal && (state.tool === 'wire' || state.drawingWire))
-            ? findWireTapPointAt(world.x, world.y, getHitTolerance(11, 18))
+            ? findWireTapAt(world.x, world.y, getHitTolerance(11, 18))
             : null;
 
         if (state.draggingComp && !state.isSimulating) {
@@ -3364,7 +3491,9 @@ function setupCanvasInteractions() {
                 }
                 for (const [wireId, origPts] of state.draggingComp.initialWirePts.entries()) {
                     const w = state.wires.find(item => item.id === wireId);
-                    if (w) w.points = JSON.parse(JSON.stringify(origPts));
+                    if (w) {
+                        w.points = JSON.parse(JSON.stringify(origPts));
+                    }
                 }
                 applyTerminalWireAttachments(state.draggingComp.attachments, false);
                 state.draggingComp.moved = true;
@@ -3379,7 +3508,82 @@ function setupCanvasInteractions() {
             const rawDy = world.y - dw.startWorld.y;
             const dx = state.snapToGrid ? Math.round(rawDx / GRID_SIZE) * GRID_SIZE : Math.round(rawDx);
             const dy = state.snapToGrid ? Math.round(rawDy / GRID_SIZE) * GRID_SIZE : Math.round(rawDy);
-            handleWireDragMove(dw, rawDx, rawDy, dx, dy);
+
+            const orig = dw.origPoints;
+            const newPts = JSON.parse(JSON.stringify(orig));
+
+            if (dw.mode === 'vertex') {
+                const idx = dw.vertexIndex;
+                const snapTarget = findTerminalAt(orig[idx].x + rawDx, orig[idx].y + rawDy, getHitTolerance(13, 20))
+                    || findWireTapAt(orig[idx].x + rawDx, orig[idx].y + rawDy, getHitTolerance(11, 18));
+                const tx = snapTarget ? snapTarget.x : orig[idx].x + dx;
+                const ty = snapTarget ? snapTarget.y : orig[idx].y + dy;
+
+                newPts[idx] = { x: tx, y: ty };
+
+                if (idx > 0 && idx < orig.length - 1) {
+                    const prevOrig = orig[idx - 1];
+                    const nextOrig = orig[idx + 1];
+                    if (prevOrig.x === orig[idx].x && idx - 1 > 0) newPts[idx - 1].x = tx;
+                    else if (prevOrig.y === orig[idx].y && idx - 1 > 0) newPts[idx - 1].y = ty;
+
+                    if (nextOrig.x === orig[idx].x && idx + 1 < orig.length - 1) newPts[idx + 1].x = tx;
+                    else if (nextOrig.y === orig[idx].y && idx + 1 < orig.length - 1) newPts[idx + 1].y = ty;
+                }
+            } else if (dw.mode === 'segment') {
+                const sIdx = dw.segIndex;
+                const pA = orig[sIdx];
+                const pB = orig[sIdx + 1];
+
+                if (!dw.startAnchored && !dw.endAnchored) {
+                    for (let i = 0; i < newPts.length; i++) {
+                        newPts[i].x = orig[i].x + dx;
+                        newPts[i].y = orig[i].y + dy;
+                    }
+                } else {
+                    const isHoriz = (pA.y === pB.y && pA.x !== pB.x);
+                    const isVert = (pA.x === pB.x && pA.y !== pB.y);
+
+                    if (isHoriz) {
+                        newPts[sIdx].y = pA.y + dy;
+                        newPts[sIdx + 1].y = pB.y + dy;
+                        if (sIdx > 0) newPts[sIdx].x = pA.x + dx;
+                        if (sIdx + 1 < orig.length - 1) newPts[sIdx + 1].x = pB.x + dx;
+
+                        if (sIdx === 0 && dw.startAnchored) {
+                            newPts.unshift({ x: pA.x, y: pA.y });
+                        }
+                        if (sIdx + 1 === orig.length - 1 && dw.endAnchored) {
+                            newPts.push({ x: pB.x, y: pB.y });
+                        }
+                    } else if (isVert) {
+                        newPts[sIdx].x = pA.x + dx;
+                        newPts[sIdx + 1].x = pB.x + dx;
+                        if (sIdx > 0) newPts[sIdx].y = pA.y + dy;
+                        if (sIdx + 1 < orig.length - 1) newPts[sIdx + 1].y = pB.y + dy;
+
+                        if (sIdx === 0 && dw.startAnchored) {
+                            newPts.unshift({ x: pA.x, y: pA.y });
+                        }
+                        if (sIdx + 1 === orig.length - 1 && dw.endAnchored) {
+                            newPts.push({ x: pB.x, y: pB.y });
+                        }
+                    } else {
+                        if (!(sIdx === 0 && dw.startAnchored)) {
+                            newPts[sIdx].x = pA.x + dx;
+                            newPts[sIdx].y = pA.y + dy;
+                        }
+                        if (!(sIdx + 1 === orig.length - 1 && dw.endAnchored)) {
+                            newPts[sIdx + 1].x = pB.x + dx;
+                            newPts[sIdx + 1].y = pB.y + dy;
+                        }
+                    }
+                }
+            }
+
+            dw.wire.points = newPts;
+            if (dx !== 0 || dy !== 0) dw.moved = true;
+            render();
             return;
         }
 
@@ -3398,13 +3602,19 @@ function setupCanvasInteractions() {
     function handlePointerRelease(e) {
         try { canvas.releasePointerCapture(e.pointerId); } catch (err) {}
         state.activePointers.delete(e.pointerId);
-        if (state.activePointers.size < 2) state.pinchState = null;
+
+        if (state.activePointers.size < 2) {
+            state.pinchState = null;
+        }
 
         if (activeMomentaryComp) {
             const def = CATALOG[activeMomentaryComp.type];
             if (def) {
-                if (def.switchType === 'momentary_no' || def.switchType === 'momentary_nonc') activeMomentaryComp.closed = false;
-                else if (def.switchType === 'momentary_nc') activeMomentaryComp.closed = true;
+                if (def.switchType === 'momentary_no' || def.switchType === 'momentary_nonc') {
+                    activeMomentaryComp.closed = false;
+                } else if (def.switchType === 'momentary_nc') {
+                    activeMomentaryComp.closed = true;
+                }
             }
             activeMomentaryComp = null;
             if (state.isSimulating) stepSimulation(0.016);
@@ -3425,7 +3635,12 @@ function setupCanvasInteractions() {
 
         if (state.draggingWire) {
             if (state.draggingWire.moved) {
-                state.draggingWire.wire.points = simplifyWirePoints(state.draggingWire.wire.points);
+                const dwWire = state.draggingWire.wire;
+                dwWire.points = simplifyWirePoints(dwWire.points);
+                if (dwWire.points.length >= 2) {
+                    splitWireAtPoint(dwWire.points[0].x, dwWire.points[0].y, dwWire.id);
+                    splitWireAtPoint(dwWire.points[dwWire.points.length - 1].x, dwWire.points[dwWire.points.length - 1].y, dwWire.id);
+                }
                 pushHistory();
             } else {
                 state.draggingWire.wire.points = simplifyWirePoints(state.draggingWire.wire.points);
@@ -3451,6 +3666,8 @@ function setupCanvasInteractions() {
                     tag: '',
                     comment: ''
                 };
+                splitWireAtPoint(cleanPts[0].x, cleanPts[0].y, newWire.id);
+                splitWireAtPoint(cleanPts[cleanPts.length - 1].x, cleanPts[cleanPts.length - 1].y, newWire.id);
                 state.wires.push(newWire);
                 state.selectedIds.clear();
                 state.selectedIds.add(newWire.id);
@@ -3466,13 +3683,13 @@ function setupCanvasInteractions() {
     canvas.addEventListener('wheel', (e) => {
         e.preventDefault();
         const rect = canvas.getBoundingClientRect();
-        zoomAtScreenPoint(e.deltaY < 0 ? 1.12 : 0.89, e.clientX - rect.left, e.clientY - rect.top);
+        const sx = e.clientX - rect.left;
+        const sy = e.clientY - rect.top;
+        const factor = e.deltaY < 0 ? 1.12 : 0.89;
+        zoomAtScreenPoint(factor, sx, sy);
     }, { passive: false });
 }
 
-// =========================================================================
-// PALETTE & UI INITIALIZATION
-// =========================================================================
 function getSymbolMiniIcon(type) {
     const stroke = 'currentColor';
     if (type === 'transformer_ac') {
@@ -3490,78 +3707,72 @@ function getSymbolMiniIcon(type) {
     if (type.startsWith('pb_') || type === 'estop_nc' || type === 'switch_toggle' || type === 'limit_switch') {
         return `<svg class="w-6 h-6 text-emerald-500" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="2"><path d="M12 2v6m0 14v-6m0 0l-4-7M4 12h4"/></svg>`;
     }
+    if (type.startsWith('contactor_') || type.startsWith('aux_')) {
+        return `<svg class="w-6 h-6 text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="2"><path d="M5 3v6m0 12v-6l-2.5-5M12 3v6m0 12v-6l-2.5-5M19 3v6m0 12v-6l-2.5-5"/><path d="M3 12h18" stroke-dasharray="2 2"/></svg>`;
+    }
     if (type.startsWith('coil')) {
-        return `<svg class="w-6 h-6 text-purple-500" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="2"><path d="M12 2v5m0 15v-5"/><rect x="7" y="7" width="10" height="10" rx="1"/></svg>`;
-    }
-    if (type.startsWith('aux_') || type.startsWith('contact_')) {
-        return `<svg class="w-6 h-6 text-cyan-500" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="2"><path d="M12 2v6m0 14v-6m0 0l-4-7"/></svg>`;
-    }
-    if (type.startsWith('contactor_')) {
-        return `<svg class="w-6 h-6 text-indigo-500" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="2"><path d="M7 2v5m5-5v5m5-5v5M7 22v-5m5 5v-5m5 5v-5M7 17l-3-8m8 8l-3-8m8 8l-3-8"/></svg>`;
+        return `<svg class="w-6 h-6 text-indigo-500" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="2"><rect x="5" y="7" width="14" height="10" rx="1"/><path d="M12 2v5m0 10v5"/></svg>`;
     }
     if (type.startsWith('motor_')) {
-        return `<svg class="w-6 h-6 text-emerald-500" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="2"><circle cx="12" cy="12" r="8"/><text x="12" y="15" text-anchor="middle" font-size="9" font-weight="bold" fill="currentColor" stroke="none">M</text></svg>`;
+        return `<svg class="w-6 h-6 text-cyan-500" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="2"><circle cx="12" cy="12" r="8"/><text x="12" y="15" font-size="9" text-anchor="middle" fill="${stroke}" stroke="none" font-weight="bold">M</text></svg>`;
     }
-    if (type === 'pilot_lamp') {
-        return `<svg class="w-6 h-6 text-green-500" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="2"><circle cx="12" cy="12" r="7"/><path d="M8 8l8 8M16 8l-8 8"/></svg>`;
+    if (type === 'pilot_lamp' || type === 'buzzer') {
+        return `<svg class="w-6 h-6 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="2"><circle cx="12" cy="12" r="7"/><path d="M7 7l10 10M17 7L7 17"/></svg>`;
     }
-    if (type === 'buzzer') {
-        return `<svg class="w-6 h-6 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="2"><rect x="7" y="7" width="10" height="10"/></svg>`;
-    }
-    return `<svg class="w-6 h-6 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="2"><path d="M4 6h16M4 12h10"/></svg>`;
+    return `<svg class="w-6 h-6 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="2"><path d="M12 2v6m0 14v-6m0 0l-5-7"/></svg>`;
 }
 
-function buildPalette(filterText = '') {
+function renderPalette(filterText = '') {
     const container = document.getElementById('palette-container');
+    if (!container) return;
     container.innerHTML = '';
-    const q = filterText.trim().toLowerCase();
+    const query = filterText.trim().toLowerCase();
 
     for (const cat of COMPONENT_CATEGORIES) {
-        const items = Object.entries(CATALOG).filter(([_, def]) => {
+        const items = Object.entries(CATALOG).filter(([key, def]) => {
             if (def.cat !== cat.id) return false;
-            if (!q) return true;
-            return def.name.toLowerCase().includes(q) || def.defaultTag.toLowerCase().includes(q);
+            if (!query) return true;
+            return def.name.toLowerCase().includes(query) || def.defaultTag.toLowerCase().includes(query);
         });
+
         if (items.length === 0) continue;
 
-        const sec = document.createElement('div');
-        sec.className = 'space-y-1.5';
+        const section = document.createElement('div');
+        section.className = 'space-y-1.5';
 
-        const hdr = document.createElement('div');
-        hdr.className = 'text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 px-1';
-        hdr.textContent = cat.name;
-        sec.appendChild(hdr);
+        const header = document.createElement('div');
+        header.className = 'px-1.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400';
+        header.textContent = cat.name;
+        section.appendChild(header);
 
         const grid = document.createElement('div');
-        grid.className = 'grid grid-cols-1 gap-1.5';
+        grid.className = 'grid grid-cols-2 gap-2';
 
         for (const [typeKey, def] of items) {
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'touch-target flex items-center gap-2.5 p-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 hover:bg-blue-50 dark:hover:bg-slate-700/80 border border-slate-200/80 dark:border-slate-700/80 text-left transition active:scale-[0.98]';
-            btn.innerHTML = `
-                <div class="w-8 h-8 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center justify-center shrink-0">
-                    ${getSymbolMiniIcon(typeKey)}
-                </div>
-                <div class="min-w-0 flex-1">
-                    <div class="text-xs font-semibold text-slate-900 dark:text-white truncate">${def.name}</div>
-                    <div class="text-[10px] font-mono text-slate-500 dark:text-slate-400">Tag: ${def.defaultTag}</div>
-                </div>
+            const card = document.createElement('button');
+            card.type = 'button';
+            card.className = 'min-h-[68px] flex flex-col items-center justify-center p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 hover:bg-blue-50 dark:hover:bg-blue-950/60 border border-slate-200/80 dark:border-slate-700/80 text-center transition active:scale-95';
+            card.innerHTML = `
+                ${getSymbolMiniIcon(typeKey)}
+                <span class="mt-1.5 text-[11px] font-medium leading-tight text-slate-800 dark:text-slate-100 line-clamp-2">${def.name}</span>
             `;
-            btn.addEventListener('click', () => {
-                if (state.isSimulating) return;
+            card.addEventListener('click', () => {
                 const canvas = document.getElementById('cad-canvas');
-                const rect = canvas.getBoundingClientRect();
-                const center = screenToWorld(rect.left + rect.width / 2, rect.top + rect.height / 2);
-                addComponentAt(typeKey, center.x, center.y);
-                setTool('select');
-                closeResourcesSidebar();
+                const dpr = window.devicePixelRatio || 1;
+                const centerWorld = {
+                    x: ((canvas.width / dpr) / 2 - state.view.x) / state.view.zoom,
+                    y: ((canvas.height / dpr) / 2 - state.view.y) / state.view.zoom
+                };
+                addComponentAt(typeKey, centerWorld.x, centerWorld.y);
+                if (window.innerWidth < 768) {
+                    hideResourcesDrawer();
+                }
             });
-            grid.appendChild(btn);
+            grid.appendChild(card);
         }
 
-        sec.appendChild(grid);
-        container.appendChild(sec);
+        section.appendChild(grid);
+        container.appendChild(section);
     }
 }
 
@@ -3572,10 +3783,49 @@ function updateStatusCounts() {
     }
 }
 
+function showResourcesDrawer() {
+    const sidebar = document.getElementById('left-sidebar');
+    if (sidebar) {
+        sidebar.classList.remove('hidden');
+        sidebar.classList.add('flex');
+        resizeCanvas();
+    }
+}
+
+function hideResourcesDrawer() {
+    const sidebar = document.getElementById('left-sidebar');
+    if (sidebar && !sidebar.classList.contains('hidden')) {
+        sidebar.classList.add('hidden');
+        sidebar.classList.remove('flex');
+        resizeCanvas();
+    }
+}
+
+function toggleResourcesDrawer() {
+    const sidebar = document.getElementById('left-sidebar');
+    if (!sidebar) return;
+    if (sidebar.classList.contains('hidden')) showResourcesDrawer();
+    else hideResourcesDrawer();
+}
+
+function toggleInspectorPanel() {
+    const panel = document.getElementById('properties-panel');
+    if (!panel) return;
+    if (panel.classList.contains('hidden')) {
+        panel.classList.remove('hidden');
+        panel.classList.add('flex');
+        populateInspector();
+    } else {
+        panel.classList.add('hidden');
+        panel.classList.remove('flex');
+    }
+    resizeCanvas();
+}
+
 function resizeCanvas() {
-    const canvas = document.getElementById('cad-canvas');
     const wrapper = document.getElementById('canvas-wrapper');
-    if (!canvas || !wrapper) return;
+    const canvas = document.getElementById('cad-canvas');
+    if (!wrapper || !canvas) return;
     const dpr = window.devicePixelRatio || 1;
     const rect = wrapper.getBoundingClientRect();
     canvas.width = Math.max(1, Math.floor(rect.width * dpr));
@@ -3583,41 +3833,56 @@ function resizeCanvas() {
     render();
 }
 
-function initUI() {
-    document.getElementById('btn-launch-app').addEventListener('click', () => {
-        ensureAudioReady();
-        const launch = document.getElementById('launch-screen');
-        launch.classList.add('opacity-0', 'pointer-events-none');
-        setTimeout(() => launch.classList.add('hidden'), 300);
-        resizeCanvas();
-        fitSchematicToScreen();
-    });
+window.addEventListener('load', () => {
+    renderPalette();
+    setupCanvasInteractions();
+
+    state.components = [];
+    state.wires = [];
+    pushHistory();
+
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', resizeCanvas);
+    }
 
     document.getElementById('btn-toggle-sidebar').addEventListener('click', (e) => {
         e.stopPropagation();
-        toggleResourcesSidebar();
+        toggleResourcesDrawer();
     });
 
-    const sidebarBackdrop = document.getElementById('sidebar-backdrop');
-    if (sidebarBackdrop) {
-        sidebarBackdrop.addEventListener('pointerdown', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            closeResourcesSidebar();
-        });
-    }
+    document.getElementById('btn-toggle-inspector').addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleInspectorPanel();
+    });
+
+    document.getElementById('btn-close-props').addEventListener('click', () => {
+        const panel = document.getElementById('properties-panel');
+        panel.classList.add('hidden');
+        panel.classList.remove('flex');
+        resizeCanvas();
+    });
 
     document.addEventListener('pointerdown', (e) => {
-        if (!isResourcesSidebarOpen()) return;
         const sidebar = document.getElementById('left-sidebar');
         const toggleBtn = document.getElementById('btn-toggle-sidebar');
-        if (sidebar && !sidebar.contains(e.target) && (!toggleBtn || !toggleBtn.contains(e.target))) {
-            closeResourcesSidebar();
+        if (window.innerWidth < 768 && sidebar && !sidebar.classList.contains('hidden')) {
+            if (!sidebar.contains(e.target) && (!toggleBtn || !toggleBtn.contains(e.target))) {
+                hideResourcesDrawer();
+            }
         }
-    }, true);
+        const fileMenu = document.getElementById('menu-file');
+        const fileBtn = document.getElementById('btn-file-menu');
+        if (fileMenu && !fileMenu.classList.contains('hidden')) {
+            if (!fileMenu.contains(e.target) && (!fileBtn || !fileBtn.contains(e.target))) {
+                fileMenu.classList.add('hidden');
+            }
+        }
+    });
 
     document.getElementById('palette-search').addEventListener('input', (e) => {
-        buildPalette(e.target.value);
+        renderPalette(e.target.value);
     });
 
     document.getElementById('btn-sim-toggle').addEventListener('click', () => {
@@ -3625,11 +3890,25 @@ function initUI() {
         else startSimulation();
     });
 
+    document.getElementById('btn-close-alert').addEventListener('click', () => {
+        document.getElementById('alert-banner').classList.add('hidden');
+    });
+
     document.getElementById('tool-select').addEventListener('click', () => setTool('select'));
     document.getElementById('tool-wire').addEventListener('click', () => setTool('wire'));
 
     document.getElementById('wire-color-select').addEventListener('change', (e) => {
         state.activeWirePotential = e.target.value;
+        if (state.selectedIds.size === 1 && !state.isSimulating) {
+            const selId = Array.from(state.selectedIds)[0];
+            const wire = state.wires.find(w => w.id === selId);
+            if (wire) {
+                wire.potential = e.target.value;
+                pushHistory();
+                refreshInspectorIfOpen();
+            }
+        }
+        render();
     });
 
     document.getElementById('btn-undo').addEventListener('click', undo);
@@ -3640,46 +3919,15 @@ function initUI() {
     document.getElementById('btn-rotate').addEventListener('click', rotateSelected);
     document.getElementById('btn-duplicate').addEventListener('click', duplicateSelected);
     document.getElementById('btn-delete').addEventListener('click', deleteSelected);
+
     document.getElementById('mob-rotate').addEventListener('click', rotateSelected);
     document.getElementById('mob-duplicate').addEventListener('click', duplicateSelected);
     document.getElementById('mob-delete').addEventListener('click', deleteSelected);
 
-    const fileMenu = document.getElementById('menu-file');
-    document.getElementById('btn-file-menu').addEventListener('click', (e) => {
-        e.stopPropagation();
-        fileMenu.classList.toggle('hidden');
-    });
-    document.addEventListener('click', () => fileMenu.classList.add('hidden'));
-
-    document.getElementById('btn-export-json').addEventListener('click', () => {
-        fileMenu.classList.add('hidden');
-        exportSchematicToFile();
-    });
-
-    document.getElementById('btn-import-json').addEventListener('click', () => {
-        fileMenu.classList.add('hidden');
-        triggerImportFromFileExplorer();
-    });
-
-    document.getElementById('json-file-input').addEventListener('change', (e) => {
-        const file = e.target.files && e.target.files[0];
-        if (file) readAndLoadJsonFile(file);
-    });
-
-    document.getElementById('btn-clear-canvas').addEventListener('click', () => {
-        if (state.isSimulating) stopSimulation();
-        state.components = [];
-        state.wires = [];
-        state.selectedIds.clear();
-        pushHistory();
-        updateFloatingActions();
-        refreshInspectorIfOpen();
-        render();
-        showToast('Canvas cleared');
-    });
-
-    document.getElementById('btn-grid-toggle').addEventListener('click', () => {
+    document.getElementById('btn-grid-toggle').addEventListener('click', (e) => {
         state.snapToGrid = !state.snapToGrid;
+        e.currentTarget.classList.toggle('text-blue-600', state.snapToGrid);
+        e.currentTarget.classList.toggle('dark:text-blue-400', state.snapToGrid);
         render();
     });
 
@@ -3688,13 +3936,13 @@ function initUI() {
 
     document.getElementById('btn-zoom-in').addEventListener('click', () => {
         const canvas = document.getElementById('cad-canvas');
-        const rect = canvas.getBoundingClientRect();
-        zoomAtScreenPoint(1.2, rect.width / 2, rect.height / 2);
+        const dpr = window.devicePixelRatio || 1;
+        zoomAtScreenPoint(1.2, (canvas.width / dpr) / 2, (canvas.height / dpr) / 2);
     });
     document.getElementById('btn-zoom-out').addEventListener('click', () => {
         const canvas = document.getElementById('cad-canvas');
-        const rect = canvas.getBoundingClientRect();
-        zoomAtScreenPoint(0.83, rect.width / 2, rect.height / 2);
+        const dpr = window.devicePixelRatio || 1;
+        zoomAtScreenPoint(0.83, (canvas.width / dpr) / 2, (canvas.height / dpr) / 2);
     });
 
     document.getElementById('btn-sound-toggle').addEventListener('click', () => {
@@ -3710,29 +3958,51 @@ function initUI() {
         render();
     });
 
-    document.getElementById('btn-close-alert').addEventListener('click', () => {
-        document.getElementById('alert-banner').classList.add('hidden');
-        stopSimulation();
+    document.getElementById('btn-file-menu').addEventListener('click', (e) => {
+        e.stopPropagation();
+        document.getElementById('menu-file').classList.toggle('hidden');
     });
 
-    const propsPanel = document.getElementById('properties-panel');
-    document.getElementById('btn-toggle-inspector').addEventListener('click', () => {
-        propsPanel.classList.toggle('hidden');
-        propsPanel.classList.toggle('flex');
-        if (!propsPanel.classList.contains('hidden')) populateInspector();
-        resizeCanvas();
-    });
-    document.getElementById('btn-close-props').addEventListener('click', () => {
-        propsPanel.classList.add('hidden');
-        propsPanel.classList.remove('flex');
-        resizeCanvas();
+    document.getElementById('btn-clear-canvas').addEventListener('click', () => {
+        if (state.isSimulating) stopSimulation();
+        state.components = [];
+        state.wires = [];
+        state.selectedIds.clear();
+        pushHistory();
+        updateFloatingActions();
+        refreshInspectorIfOpen();
+        render();
+        document.getElementById('menu-file').classList.add('hidden');
+        showToast('Canvas cleared');
     });
 
-    ['prop-tag', 'prop-comment', 'prop-delay', 'prop-pri-v', 'prop-sec-v'].forEach(id => {
+    // Direct Device File Explorer Export (.json)
+    document.getElementById('btn-export-json').addEventListener('click', () => {
+        document.getElementById('menu-file').classList.add('hidden');
+        exportSchematicToFile();
+    });
+
+    // Direct Device File Explorer Import (.json)
+    document.getElementById('btn-import-json').addEventListener('click', () => {
+        document.getElementById('menu-file').classList.add('hidden');
+        triggerImportFromFileExplorer();
+    });
+
+    document.getElementById('json-file-input').addEventListener('change', (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (file) {
+            readAndLoadJsonFile(file);
+        }
+        e.target.value = '';
+    });
+
+    // Inspector Draft Change Listeners + Explicit Apply
+    ['prop-tag', 'prop-comment', 'prop-pri-v', 'prop-sec-v', 'prop-delay'].forEach(id => {
         const el = document.getElementById(id);
         if (!el) return;
         el.addEventListener('input', () => {
-            if (state.inspectorDraft) setInspectorDirty(true);
+            if (!state.inspectorDraft) return;
+            setInspectorDirty(true);
         });
         el.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
@@ -3742,29 +4012,32 @@ function initUI() {
         });
     });
 
-    document.getElementById('prop-wire-potential').addEventListener('change', () => {
-        if (state.inspectorDraft) setInspectorDirty(true);
+    document.getElementById('prop-wire-potential').addEventListener('change', (e) => {
+        if (!state.inspectorDraft || state.inspectorDraft.kind !== 'wire') return;
+        state.inspectorDraft.potential = e.target.value;
+        setInspectorDirty(true);
     });
 
-    document.getElementById('prop-latched').addEventListener('change', () => {
-        if (state.inspectorDraft) setInspectorDirty(true);
+    document.getElementById('prop-latched').addEventListener('change', (e) => {
+        if (!state.inspectorDraft || state.inspectorDraft.kind !== 'comp') return;
+        state.inspectorDraft.closed = e.target.checked;
+        setInspectorDirty(true);
     });
 
     document.querySelectorAll('#prop-color-swatches button').forEach(btn => {
         btn.addEventListener('click', () => {
-            if (!state.inspectorDraft) return;
+            if (!state.inspectorDraft || state.inspectorDraft.kind !== 'comp') return;
             state.inspectorDraft.color = btn.dataset.color;
-            highlightActiveColorSwatch(btn.dataset.color);
+            highlightActiveColorSwatch(state.inspectorDraft.color);
             setInspectorDirty(true);
         });
     });
 
     document.querySelectorAll('.rot-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-            if (!state.inspectorDraft) return;
-            const rot = parseInt(btn.dataset.rot, 10);
-            state.inspectorDraft.rotation = rot;
-            highlightActiveRotationBtn(rot);
+            if (!state.inspectorDraft || state.inspectorDraft.kind !== 'comp') return;
+            state.inspectorDraft.rotation = parseInt(btn.dataset.rot, 10) || 0;
+            highlightActiveRotationBtn(state.inspectorDraft.rotation);
             setInspectorDirty(true);
         });
     });
@@ -3772,15 +4045,14 @@ function initUI() {
     document.getElementById('prop-btn-apply').addEventListener('click', applyInspectorChanges);
     document.getElementById('prop-btn-reset').addEventListener('click', () => {
         populateInspector();
-        showToast('Draft reverted');
+        showToast('Draft reset');
     });
-
     document.getElementById('prop-btn-dup').addEventListener('click', duplicateSelected);
     document.getElementById('prop-btn-del').addEventListener('click', deleteSelected);
 
+    // Keyboard shortcuts
     window.addEventListener('keydown', (e) => {
-        const tag = (e.target && e.target.tagName) || '';
-        if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) return;
+        if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) return;
 
         if (e.code === 'Space') {
             state.spacePressed = true;
@@ -3788,21 +4060,20 @@ function initUI() {
         }
         if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
             e.preventDefault();
-            if (e.shiftKey) redo();
-            else undo();
-            return;
-        }
-        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+            undo();
+        } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
             e.preventDefault();
             redo();
-            return;
-        }
-        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
+        } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
             e.preventDefault();
             duplicateSelected();
-            return;
-        }
-        if (e.key === 'Delete' || e.key === 'Backspace') {
+        } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+            e.preventDefault();
+            exportSchematicToFile();
+        } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'o') {
+            e.preventDefault();
+            triggerImportFromFileExplorer();
+        } else if (e.key === 'Delete' || e.key === 'Backspace') {
             deleteSelected();
         } else if (e.key.toLowerCase() === 'r') {
             rotateSelected();
@@ -3811,16 +4082,11 @@ function initUI() {
         } else if (e.key.toLowerCase() === 'w') {
             setTool('wire');
         } else if (e.key === 'Escape') {
-            if (isResourcesSidebarOpen()) closeResourcesSidebar();
-            if (state.drawingWire) {
-                state.drawingWire = null;
-                render();
-            } else {
-                state.selectedIds.clear();
-                updateFloatingActions();
-                refreshInspectorIfOpen();
-                render();
-            }
+            state.drawingWire = null;
+            state.selectedIds.clear();
+            updateFloatingActions();
+            refreshInspectorIfOpen();
+            render();
         }
     });
 
@@ -3828,12 +4094,14 @@ function initUI() {
         if (e.code === 'Space') state.spacePressed = false;
     });
 
-    window.addEventListener('resize', resizeCanvas);
-}
+    document.getElementById('btn-launch-app').addEventListener('click', () => {
+        const screen = document.getElementById('launch-screen');
+        if (screen) {
+            screen.classList.add('opacity-0', 'pointer-events-none');
+            setTimeout(() => screen.classList.add('hidden'), 300);
+        }
+        resizeCanvas();
+    });
 
-buildPalette();
-pushHistory();
-initUI();
-setupCanvasInteractions();
-resizeCanvas();
-requestAnimationFrame(mainLoop);
+    requestAnimationFrame(mainLoop);
+});
