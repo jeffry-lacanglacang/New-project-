@@ -1,0 +1,2492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ShopFloor PMS &amp; Downtime Logger — Lathe &amp; Rotating Equipment</title>
+<style>
+  :root {
+    --bg-primary: #0b0f17;
+    --bg-secondary: #111827;
+    --bg-card: #161f30;
+    --bg-card-hover: #1c273d;
+    --bg-input: #0d131f;
+    --border-color: #263248;
+    --border-bright: #374766;
+    --text-primary: #f1f5f9;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+    --amber: #f59e0b;
+    --amber-dim: rgba(245, 158, 11, 0.14);
+    --amber-border: rgba(245, 158, 11, 0.4);
+    --emerald: #10b981;
+    --emerald-dim: rgba(16, 185, 129, 0.14);
+    --emerald-border: rgba(16, 185, 129, 0.4);
+    --red: #ef4444;
+    --red-dim: rgba(239, 68, 68, 0.15);
+    --red-border: rgba(239, 68, 68, 0.45);
+    --blue: #3b82f6;
+    --blue-dim: rgba(59, 130, 246, 0.15);
+    --purple: #a855f7;
+    --purple-dim: rgba(168, 85, 247, 0.15);
+    --cyan: #06b6d4;
+    --radius: 10px;
+    --radius-sm: 6px;
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    --shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    line-height: 1.5;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  .mono {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Top Header */
+  header.topbar {
+    background: linear-gradient(180deg, #131c2e 0%, #0f1624 100%);
+    border-bottom: 1px solid var(--border-color);
+    padding: 0.85rem 1.25rem;
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .brand-badge {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    background: var(--amber-dim);
+    border: 1px solid var(--amber-border);
+    display: grid;
+    place-items: center;
+    color: var(--amber);
+    flex-shrink: 0;
+  }
+
+  .brand h1 {
+    font-size: 1.05rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: var(--text-primary);
+    line-height: 1.2;
+  }
+
+  .brand span {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    display: block;
+  }
+
+  .top-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  /* Buttons */
+  button, .btn {
+    font-family: var(--font-sans);
+    font-size: 0.84rem;
+    font-weight: 600;
+    padding: 0.55rem 0.9rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-bright);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    transition: all 0.15s ease;
+    min-height: 38px;
+    touch-action: manipulation;
+  }
+
+  button:hover {
+    background: var(--bg-card-hover);
+    border-color: #4f648c;
+  }
+
+  button:active {
+    transform: translateY(1px);
+  }
+
+  button.btn-amber {
+    background: var(--amber);
+    color: #0b0f17;
+    border-color: var(--amber);
+    font-weight: 700;
+  }
+
+  button.btn-amber:hover {
+    background: #fbbf24;
+    border-color: #fbbf24;
+  }
+
+  button.btn-emerald {
+    background: var(--emerald-dim);
+    color: var(--emerald);
+    border-color: var(--emerald-border);
+  }
+
+  button.btn-emerald:hover {
+    background: rgba(16, 185, 129, 0.25);
+  }
+
+  button.btn-red {
+    background: var(--red-dim);
+    color: #fca5a5;
+    border-color: var(--red-border);
+  }
+
+  button.btn-red:hover {
+    background: rgba(239, 68, 68, 0.26);
+  }
+
+  button.btn-sm {
+    padding: 0.35rem 0.65rem;
+    font-size: 0.78rem;
+    min-height: 32px;
+  }
+
+  /* Navigation Tabs */
+  nav.tabs {
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    padding: 0 1.25rem;
+    display: flex;
+    gap: 0.35rem;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  nav.tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tab-btn {
+    background: transparent;
+    border: none;
+    border-bottom: 3px solid transparent;
+    border-radius: 0;
+    color: var(--text-secondary);
+    padding: 0.85rem 1rem;
+    font-size: 0.88rem;
+    white-space: nowrap;
+    min-height: 46px;
+  }
+
+  .tab-btn:hover {
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-primary);
+  }
+
+  .tab-btn.active {
+    color: var(--amber);
+    border-bottom-color: var(--amber);
+    background: rgba(245, 158, 11, 0.05);
+  }
+
+  .badge-count {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-bright);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    padding: 0.1rem 0.45rem;
+    border-radius: 999px;
+  }
+
+  .badge-count.alert {
+    background: var(--red-dim);
+    border-color: var(--red-border);
+    color: #fca5a5;
+  }
+
+  /* Main Container */
+  main.container {
+    max-width: 1440px;
+    margin: 0 auto;
+    padding: 1.25rem;
+  }
+
+  .tab-panel {
+    display: none;
+  }
+
+  .tab-panel.active {
+    display: block;
+    animation: fadeIn 0.18s ease;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(3px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* KPI Strip */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 0.9rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .kpi-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    padding: 1rem 1.1rem;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .kpi-card::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: var(--border-bright);
+  }
+
+  .kpi-card.amber::before { background: var(--amber); }
+  .kpi-card.emerald::before { background: var(--emerald); }
+  .kpi-card.red::before { background: var(--red); }
+  .kpi-card.blue::before { background: var(--blue); }
+
+  .kpi-label {
+    font-size: 0.74rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+    font-weight: 600;
+    margin-bottom: 0.35rem;
+  }
+
+  .kpi-value {
+    font-family: var(--font-mono);
+    font-size: 1.65rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.15;
+  }
+
+  .kpi-sub {
+    font-size: 0.76rem;
+    color: var(--text-muted);
+    margin-top: 0.3rem;
+  }
+
+  /* Section Headers & Filter Bars */
+  .section-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
+
+  .section-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .filter-group {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  input, select, textarea {
+    background: var(--bg-input);
+    border: 1px solid var(--border-bright);
+    color: var(--text-primary);
+    border-radius: var(--radius-sm);
+    padding: 0.5rem 0.75rem;
+    font-family: var(--font-sans);
+    font-size: 0.86rem;
+    min-height: 38px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+
+  input:focus, select:focus, textarea:focus {
+    border-color: var(--amber);
+  }
+
+  /* Machine Fleet Cards */
+  .fleet-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+    gap: 1rem;
+  }
+
+  .machine-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    padding: 1.1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    transition: border-color 0.15s;
+  }
+
+  .machine-card:hover {
+    border-color: var(--border-bright);
+  }
+
+  .machine-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .machine-id {
+    font-family: var(--font-mono);
+    font-size: 0.74rem;
+    color: var(--amber);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+  }
+
+  .machine-name {
+    font-size: 1.02rem;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .machine-model {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+  }
+
+  /* Status Pills */
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.22rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.73rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+  }
+
+  .pill-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  .pill-running {
+    background: var(--emerald-dim);
+    color: var(--emerald);
+    border: 1px solid var(--emerald-border);
+  }
+
+  .pill-idle {
+    background: rgba(148, 163, 184, 0.14);
+    color: #cbd5e1;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+  }
+
+  .pill-pms {
+    background: var(--amber-dim);
+    color: var(--amber);
+    border: 1px solid var(--amber-border);
+  }
+
+  .pill-breakdown {
+    background: var(--red-dim);
+    color: #fca5a5;
+    border: 1px solid var(--red-border);
+  }
+
+  .pill-mech {
+    background: var(--blue-dim);
+    color: #93c5fd;
+    border: 1px solid rgba(59, 130, 246, 0.4);
+  }
+
+  .pill-elec {
+    background: var(--purple-dim);
+    color: #d8b4fe;
+    border: 1px solid rgba(168, 85, 247, 0.4);
+  }
+
+  .specs-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.45rem;
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 0.55rem 0.65rem;
+  }
+
+  .spec-item span {
+    display: block;
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+  }
+
+  .spec-item strong {
+    font-family: var(--font-mono);
+    font-size: 0.84rem;
+    color: var(--text-primary);
+  }
+
+  .meter-box {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(245, 158, 11, 0.06);
+    border: 1px solid rgba(245, 158, 11, 0.25);
+    border-radius: var(--radius-sm);
+    padding: 0.6rem 0.75rem;
+    gap: 0.5rem;
+  }
+
+  .meter-reading {
+    font-family: var(--font-mono);
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--amber);
+  }
+
+  .shift-quick-form {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .shift-quick-form input {
+    width: 74px;
+    padding: 0.35rem 0.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.84rem;
+    min-height: 34px;
+    text-align: right;
+  }
+
+  .pms-health-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.78rem;
+    padding-top: 0.2rem;
+    border-top: 1px solid var(--border-color);
+    gap: 0.4rem;
+    flex-wrap: wrap;
+  }
+
+  .card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+
+  .card-actions button {
+    flex: 1;
+    min-width: 90px;
+  }
+
+  /* Tables & Responsive Wrappers */
+  .table-wrap {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    overflow-x: auto;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+  }
+
+  th {
+    background: #101726;
+    color: var(--text-secondary);
+    font-size: 0.73rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    text-align: left;
+    padding: 0.75rem 0.85rem;
+    border-bottom: 1px solid var(--border-color);
+    white-space: nowrap;
+  }
+
+  td {
+    padding: 0.75rem 0.85rem;
+    border-bottom: 1px solid var(--border-color);
+    vertical-align: middle;
+  }
+
+  tr:last-child td {
+    border-bottom: none;
+  }
+
+  tr:hover td {
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  /* Progress Bar */
+  .progress-track {
+    width: 100%;
+    min-width: 110px;
+    height: 8px;
+    background: var(--bg-input);
+    border-radius: 999px;
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    margin-bottom: 0.25rem;
+  }
+
+  .progress-fill {
+    height: 100%;
+    border-radius: 999px;
+    transition: width 0.25s ease;
+  }
+
+  .fill-ok { background: var(--emerald); }
+  .fill-warn { background: var(--amber); }
+  .fill-overdue { background: var(--red); }
+
+  /* Two-Column Panels for Forms & Analytics */
+  .split-layout {
+    display: grid;
+    grid-template-columns: 390px 1fr;
+    gap: 1.25rem;
+    align-items: start;
+  }
+
+  @media (max-width: 980px) {
+    .split-layout {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .panel-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    padding: 1.15rem;
+  }
+
+  .panel-card h3 {
+    font-size: 0.98rem;
+    margin-bottom: 0.9rem;
+    padding-bottom: 0.6rem;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+  }
+
+  .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  .form-group.full {
+    grid-column: 1 / -1;
+  }
+
+  .form-group label {
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+
+  textarea {
+    min-height: 68px;
+    resize: vertical;
+  }
+
+  /* Analytics Bars */
+  .bar-chart-row {
+    margin-bottom: 0.95rem;
+  }
+
+  .bar-chart-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.82rem;
+    margin-bottom: 0.3rem;
+  }
+
+  .stacked-bar {
+    height: 22px;
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    display: flex;
+    overflow: hidden;
+  }
+
+  .seg-sched { background: var(--amber); }
+  .seg-mech { background: var(--blue); }
+  .seg-elec { background: var(--purple); }
+  .seg-ops { background: var(--text-muted); }
+
+  .legend-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    margin-top: 0.75rem;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .legend-swatch {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+  }
+
+  /* Modal Dialog */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(5, 8, 15, 0.8);
+    backdrop-filter: blur(3px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    z-index: 100;
+  }
+
+  .modal-backdrop.open {
+    display: flex;
+  }
+
+  .modal-box {
+    background: var(--bg-card);
+    border: 1px solid var(--border-bright);
+    border-radius: var(--radius);
+    width: 100%;
+    max-width: 560px;
+    max-height: 90vh;
+    overflow-y: auto;
+    padding: 1.25rem;
+    box-shadow: var(--shadow);
+  }
+
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 0.75rem;
+    margin-bottom: 1rem;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 1.15rem;
+    padding-top: 0.85rem;
+    border-top: 1px solid var(--border-color);
+  }
+
+  /* Toast Notification */
+  .toast-container {
+    position: fixed;
+    bottom: 1.25rem;
+    right: 1.25rem;
+    z-index: 200;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-width: 340px;
+  }
+
+  .toast {
+    background: #1e293b;
+    border: 1px solid var(--border-bright);
+    border-left: 4px solid var(--emerald);
+    color: var(--text-primary);
+    padding: 0.75rem 1rem;
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow);
+    font-size: 0.84rem;
+    animation: slideIn 0.2s ease;
+  }
+
+  .toast.warn { border-left-color: var(--amber); }
+  .toast.error { border-left-color: var(--red); }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateX(20px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  /* Print Styles for PMS Work Order / Checksheet */
+  @media print {
+    body {
+      background: #ffffff !important;
+      color: #000000 !important;
+    }
+    header.topbar, nav.tabs, .no-print, button, .filter-group, .shift-quick-form, .card-actions {
+      display: none !important;
+    }
+    .tab-panel {
+      display: block !important;
+      margin-bottom: 2rem;
+    }
+    .kpi-card, .machine-card, .table-wrap, .panel-card {
+      background: #ffffff !important;
+      color: #000000 !important;
+      border: 1px solid #999999 !important;
+      box-shadow: none !important;
+    }
+    th {
+      background: #eeeeee !important;
+      color: #000000 !important;
+    }
+    td, th {
+      border: 1px solid #bbbbbb !important;
+      color: #000000 !important;
+    }
+    .pill {
+      border: 1px solid #444444 !important;
+      color: #000000 !important;
+      background: transparent !important;
+    }
+    .print-header {
+      display: block !important;
+      margin-bottom: 1rem;
+      border-bottom: 2px solid #000;
+      padding-bottom: 0.5rem;
+    }
+  }
+
+  .print-header {
+    display: none;
+  }
+
+  @media (max-width: 640px) {
+    .form-grid {
+      grid-template-columns: 1fr;
+    }
+    header.topbar {
+      padding: 0.75rem;
+    }
+    main.container {
+      padding: 0.85rem;
+    }
+  }
+</style>
+</head>
+<body>
+
+<div class="print-header">
+  <h2>MACHINE SHOP PREVENTIVE MAINTENANCE (PMS) &amp; DOWNTIME REPORT</h2>
+  <p id="printTimestamp"></p>
+</div>
+
+<!-- Top Application Header -->
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-badge" aria-hidden="true">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"></circle>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+      </svg>
+    </div>
+    <div>
+      <h1>SHOPFLOOR PMS &amp; RELIABILITY LOGGER</h1>
+      <span>Lathe &amp; Rotating Equipment Preventive Maintenance Control</span>
+    </div>
+  </div>
+
+  <div class="top-actions no-print">
+    <button onclick="exportCSV()" title="Export PMS & Downtime Logs to CSV">Export CSV</button>
+    <button onclick="exportJSON()" title="Download Full JSON Backup">Backup JSON</button>
+    <button onclick="triggerImportJSON()" title="Restore JSON Backup">Restore JSON</button>
+    <input type="file" id="jsonFileInput" accept=".json" style="display:none" onchange="handleImportJSON(event)">
+    <button onclick="printChecksheet()" title="Print Work Order / PMS Sheet">Print Sheet</button>
+    <button class="btn-red btn-sm" onclick="confirmResetSample()" title="Reset to Sample Shop Data">Reset Demo</button>
+  </div>
+</header>
+
+<!-- Navigation Tabs -->
+<nav class="tabs no-print" role="tablist">
+  <button class="tab-btn active" data-tab="fleet" onclick="switchTab('fleet')">
+    Equipment Fleet &amp; Hours <span class="badge-count" id="navFleetCount">0</span>
+  </button>
+  <button class="tab-btn" data-tab="pms" onclick="switchTab('pms')">
+    PMS Interval Matrix <span class="badge-count alert" id="navPmsDueCount">0</span>
+  </button>
+  <button class="tab-btn" data-tab="downtime" onclick="switchTab('downtime')">
+    Downtime Logger <span class="badge-count" id="navDowntimeCount">0</span>
+  </button>
+  <button class="tab-btn" data-tab="history" onclick="switchTab('history')">
+    Completed PMS History <span class="badge-count" id="navHistoryCount">0</span>
+  </button>
+  <button class="tab-btn" data-tab="analytics" onclick="switchTab('analytics')">
+    Reliability KPIs &amp; MTBF/MTTR
+  </button>
+</nav>
+
+<main class="container">
+
+  <!-- Global Shop KPI Summary Strip -->
+  <section class="kpi-grid" id="globalKpiGrid"></section>
+
+  <!-- TAB 1: EQUIPMENT FLEET & RUNNING HOURS -->
+  <section id="tab-fleet" class="tab-panel active">
+    <div class="section-bar">
+      <div class="section-title">Shop Floor Rotating Equipment &amp; Hour Meters</div>
+      <div class="filter-group no-print">
+        <select id="fleetStatusFilter" onchange="renderFleet()">
+          <option value="ALL">All Statuses</option>
+          <option value="Running">Running</option>
+          <option value="Idle">Idle</option>
+          <option value="Scheduled PMS">Scheduled PMS</option>
+          <option value="Breakdown">Breakdown / Unscheduled</option>
+        </select>
+        <button class="btn-amber" onclick="openMachineModal()">+ Add Equipment</button>
+      </div>
+    </div>
+    <div class="fleet-grid" id="fleetGrid"></div>
+  </section>
+
+  <!-- TAB 2: PMS CHECKLIST & INTERVAL MATRIX -->
+  <section id="tab-pms" class="tab-panel">
+    <div class="section-bar">
+      <div class="section-title">Preventive Maintenance (PMS) Schedule &amp; Interval Matrix</div>
+      <div class="filter-group no-print">
+        <select id="pmsMachineFilter" onchange="renderPmsTable()">
+          <option value="ALL">All Equipment</option>
+        </select>
+        <select id="pmsTierFilter" onchange="renderPmsTable()">
+          <option value="ALL">All Frequencies</option>
+          <option value="Daily / Shift">Daily / Shift (8–12 hrs)</option>
+          <option value="Weekly">Weekly (50 hrs)</option>
+          <option value="Monthly">Monthly (200 hrs)</option>
+          <option value="Quarterly">Quarterly (600 hrs)</option>
+          <option value="Semi-Annual / Annual">Semi-Annual / Annual (1,200–2,400 hrs)</option>
+        </select>
+        <select id="pmsDiscFilter" onchange="renderPmsTable()">
+          <option value="ALL">All Disciplines</option>
+          <option value="Mechanical">Mechanical</option>
+          <option value="Electrical">Electrical</option>
+        </select>
+        <select id="pmsStateFilter" onchange="renderPmsTable()">
+          <option value="ALL">All Health States</option>
+          <option value="OVERDUE">Overdue Only</option>
+          <option value="DUE_SOON">Due Soon (&ge;80%)</option>
+          <option value="OK">OK / Within Interval</option>
+        </select>
+        <button class="btn-amber" onclick="openCustomPmsModal()">+ Custom PMS Task</button>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Equipment</th>
+            <th>Frequency Tier</th>
+            <th>Discipline</th>
+            <th>PMS Job Description &amp; Acceptance Criteria</th>
+            <th>Interval</th>
+            <th>Last Done (Hr)</th>
+            <th>Next Due (Hr)</th>
+            <th>Remaining</th>
+            <th>Interval Health</th>
+            <th class="no-print">Action</th>
+          </tr>
+        </thead>
+        <tbody id="pmsTableBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- TAB 3: SCHEDULED & UNSCHEDULED DOWNTIME LOGGER -->
+  <section id="tab-downtime" class="tab-panel">
+    <div class="split-layout">
+      <!-- Left: Log Downtime Form -->
+      <div class="panel-card no-print">
+        <h3>
+          <span>Log Downtime Event</span>
+          <span class="pill pill-breakdown" style="font-size:0.68rem;">Event Entry</span>
+        </h3>
+        <form id="downtimeForm" onsubmit="submitDowntime(event)">
+          <div class="form-grid">
+            <div class="form-group full">
+              <label for="dtMachine">Equipment *</label>
+              <select id="dtMachine" required></select>
+            </div>
+
+            <div class="form-group full">
+              <label for="dtClass">Downtime Classification *</label>
+              <select id="dtClass" required onchange="updateSubcategoryOptions()">
+                <option value="Unscheduled Mechanical">Unscheduled Mechanical Breakdown</option>
+                <option value="Unscheduled Electrical">Unscheduled Electrical Breakdown</option>
+                <option value="Scheduled PMS">Scheduled PMS Shutdown</option>
+                <option value="Operational / Other">Operational / Tooling / Power Wait</option>
+              </select>
+            </div>
+
+            <div class="form-group full">
+              <label for="dtSubcat">Failure Mode / Job Category *</label>
+              <select id="dtSubcat" required></select>
+            </div>
+
+            <div class="form-group">
+              <label for="dtStart">Start Date &amp; Time *</label>
+              <input type="datetime-local" id="dtStart" required onchange="autoCalcDowntimeHours()">
+            </div>
+
+            <div class="form-group">
+              <label for="dtEnd">End Date &amp; Time *</label>
+              <input type="datetime-local" id="dtEnd" required onchange="autoCalcDowntimeHours()">
+            </div>
+
+            <div class="form-group">
+              <label for="dtHours">Downtime Duration (Hrs) *</label>
+              <input type="number" id="dtHours" step="0.1" min="0.1" required placeholder="e.g. 2.5">
+            </div>
+
+            <div class="form-group">
+              <label for="dtTech">Technician / Electrician *</label>
+              <input type="text" id="dtTech" required placeholder="e.g. R. Santos">
+            </div>
+
+            <div class="form-group full">
+              <label for="dtRootCause">Root Cause / Fault Symptoms *</label>
+              <input type="text" id="dtRootCause" required placeholder="e.g. Thermal overload trip on main spindle motor">
+            </div>
+
+            <div class="form-group full">
+              <label for="dtAction">Corrective Action Taken *</label>
+              <textarea id="dtAction" required placeholder="Describe repair, calibration, or parts replaced..."></textarea>
+            </div>
+
+            <div class="form-group full">
+              <label for="dtParts">Spare Parts / Materials Used</label>
+              <input type="text" id="dtParts" placeholder="e.g. SKF 6208-2RS bearing, 18A contactor coil">
+            </div>
+
+            <div class="form-group full" style="margin-top:0.35rem;">
+              <button type="submit" class="btn-amber" style="width:100%;">Record Downtime Entry</button>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      <!-- Right: Downtime Event Log Table -->
+      <div>
+        <div class="section-bar">
+          <div class="section-title">Downtime Event Register</div>
+          <div class="filter-group no-print">
+            <select id="dtFilterMachine" onchange="renderDowntimeTable()">
+              <option value="ALL">All Equipment</option>
+            </select>
+            <select id="dtFilterClass" onchange="renderDowntimeTable()">
+              <option value="ALL">All Classifications</option>
+              <option value="Unscheduled Mechanical">Unscheduled Mechanical</option>
+              <option value="Unscheduled Electrical">Unscheduled Electrical</option>
+              <option value="Scheduled PMS">Scheduled PMS</option>
+              <option value="Operational / Other">Operational / Other</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Date / Window</th>
+                <th>Equipment</th>
+                <th>Classification</th>
+                <th>Duration</th>
+                <th>Root Cause &amp; Corrective Action</th>
+                <th>Parts &amp; Tech</th>
+                <th class="no-print">Del</th>
+              </tr>
+            </thead>
+            <tbody id="downtimeTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TAB 4: COMPLETED PMS HISTORY -->
+  <section id="tab-history" class="tab-panel">
+    <div class="section-bar">
+      <div class="section-title">Completed Preventive Maintenance Audit Log</div>
+      <div class="filter-group no-print">
+        <select id="histMachineFilter" onchange="renderHistoryTable()">
+          <option value="ALL">All Equipment</option>
+        </select>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Timestamp</th>
+            <th>Equipment</th>
+            <th>Frequency</th>
+            <th>Discipline</th>
+            <th>PMS Task Completed</th>
+            <th>Meter Hr</th>
+            <th>Technician</th>
+            <th>Notes / Readings</th>
+          </tr>
+        </thead>
+        <tbody id="historyTableBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- TAB 5: RELIABILITY KPIs & ANALYTICS -->
+  <section id="tab-analytics" class="tab-panel">
+    <div class="section-bar">
+      <div class="section-title">Equipment Reliability Metrics (Availability, MTBF &amp; MTTR)</div>
+    </div>
+
+    <div class="table-wrap" style="margin-bottom: 1.25rem;">
+      <table>
+        <thead>
+          <tr>
+            <th>Asset ID</th>
+            <th>Machine Name</th>
+            <th>Running Hrs</th>
+            <th>Sched. PMS Hrs</th>
+            <th>Unsched. Mech Hrs</th>
+            <th>Unsched. Elec Hrs</th>
+            <th>Operational Hrs</th>
+            <th>Breakdowns</th>
+            <th>Availability %</th>
+            <th>MTBF (Hrs)</th>
+            <th>MTTR (Hrs)</th>
+          </tr>
+        </thead>
+        <tbody id="analyticsTableBody"></tbody>
+      </table>
+    </div>
+
+    <div class="panel-card">
+      <h3>
+        <span>Downtime Distribution by Equipment &amp; Category</span>
+      </h3>
+      <div id="downtimeVisualChart"></div>
+      <div class="legend-row">
+        <div class="legend-item"><span class="legend-swatch seg-sched"></span> Scheduled PMS</div>
+        <div class="legend-item"><span class="legend-swatch seg-mech"></span> Unscheduled Mechanical</div>
+        <div class="legend-item"><span class="legend-swatch seg-elec"></span> Unscheduled Electrical</div>
+        <div class="legend-item"><span class="legend-swatch seg-ops"></span> Operational / Other</div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- MODAL: Add / Edit Equipment -->
+<div class="modal-backdrop" id="machineModal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="machineModalTitle">Add Rotating Equipment</h3>
+      <button class="btn-sm" onclick="closeModal('machineModal')">✕</button>
+    </div>
+    <form id="machineForm" onsubmit="saveMachine(event)">
+      <input type="hidden" id="editMachineId">
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="mCode">Asset Tag / ID *</label>
+          <input type="text" id="mCode" required placeholder="e.g. LATHE-03">
+        </div>
+        <div class="form-group">
+          <label for="mStatus">Operational Status *</label>
+          <select id="mStatus" required>
+            <option value="Running">Running</option>
+            <option value="Idle">Idle</option>
+            <option value="Scheduled PMS">Scheduled PMS</option>
+            <option value="Breakdown">Breakdown</option>
+          </select>
+        </div>
+        <div class="form-group full">
+          <label for="mName">Equipment Name *</label>
+          <input type="text" id="mName" required placeholder="e.g. Precision Gap-Bed Engine Lathe #3">
+        </div>
+        <div class="form-group full">
+          <label for="mModel">Make / Model / Serial</label>
+          <input type="text" id="mModel" placeholder="e.g. Colchester Triumph 2000">
+        </div>
+        <div class="form-group">
+          <label for="mPower">Motor Rating (kW / HP) *</label>
+          <input type="text" id="mPower" required placeholder="e.g. 5.5 kW (7.5 HP)">
+        </div>
+        <div class="form-group">
+          <label for="mVoltage">Supply Voltage / Phase *</label>
+          <input type="text" id="mVoltage" required placeholder="e.g. 440V 3-Ph 60Hz">
+        </div>
+        <div class="form-group">
+          <label for="mRpm">Max Spindle / Motor RPM *</label>
+          <input type="text" id="mRpm" required placeholder="e.g. 25–2,000 RPM">
+        </div>
+        <div class="form-group">
+          <label for="mHours">Current Running Hours *</label>
+          <input type="number" id="mHours" step="0.1" min="0" required placeholder="e.g. 1250">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" onclick="closeModal('machineModal')">Cancel</button>
+        <button type="submit" class="btn-amber">Save Equipment</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- MODAL: Complete PMS Task -->
+<div class="modal-backdrop" id="completePmsModal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Complete Preventive Maintenance Task</h3>
+      <button class="btn-sm" onclick="closeModal('completePmsModal')">✕</button>
+    </div>
+    <form id="completePmsForm" onsubmit="submitCompletePms(event)">
+      <input type="hidden" id="compPmsTaskId">
+      <div class="form-grid">
+        <div class="form-group full">
+          <label>Equipment &amp; PMS Task</label>
+          <div id="compPmsSummary" style="background:var(--bg-input);padding:0.65rem;border-radius:6px;border:1px solid var(--border-color);font-size:0.85rem;"></div>
+        </div>
+        <div class="form-group">
+          <label for="compPmsHour">Completion Meter Hour *</label>
+          <input type="number" id="compPmsHour" step="0.1" min="0" required>
+        </div>
+        <div class="form-group">
+          <label for="compPmsTech">Technician / Electrician *</label>
+          <input type="text" id="compPmsTech" required placeholder="e.g. J. Dela Cruz">
+        </div>
+        <div class="form-group full">
+          <label for="compPmsNotes">Inspection Readings / Notes (Megger M&Omega;, Runout, Oil Grade)</label>
+          <textarea id="compPmsNotes" placeholder="e.g. Insulation resistance 480 MΩ @ 500V DC; headstock oil topped up with ISO VG 68."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" onclick="closeModal('completePmsModal')">Cancel</button>
+        <button type="submit" class="btn-amber">Confirm PMS Completion</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- MODAL: Add Custom PMS Task -->
+<div class="modal-backdrop" id="customPmsModal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Add Custom PMS Task</h3>
+      <button class="btn-sm" onclick="closeModal('customPmsModal')">✕</button>
+    </div>
+    <form id="customPmsForm" onsubmit="saveCustomPms(event)">
+      <div class="form-grid">
+        <div class="form-group full">
+          <label for="cpMachine">Target Equipment *</label>
+          <select id="cpMachine" required></select>
+        </div>
+        <div class="form-group">
+          <label for="cpTier">Frequency Tier *</label>
+          <select id="cpTier" required onchange="syncCustomInterval()">
+            <option value="Daily / Shift">Daily / Shift (10 hrs)</option>
+            <option value="Weekly">Weekly (50 hrs)</option>
+            <option value="Monthly" selected>Monthly (200 hrs)</option>
+            <option value="Quarterly">Quarterly (600 hrs)</option>
+            <option value="Semi-Annual / Annual">Semi-Annual / Annual (1,200 hrs)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="cpDisc">Discipline *</label>
+          <select id="cpDisc" required>
+            <option value="Mechanical">Mechanical</option>
+            <option value="Electrical">Electrical</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="cpInterval">Interval (Running Hours) *</label>
+          <input type="number" id="cpInterval" min="1" step="1" value="200" required>
+        </div>
+        <div class="form-group">
+          <label for="cpLastDone">Last Completed At (Hr) *</label>
+          <input type="number" id="cpLastDone" min="0" step="0.1" value="0" required>
+        </div>
+        <div class="form-group full">
+          <label for="cpTitle">PMS Job Description &amp; Check Standard *</label>
+          <textarea id="cpTitle" required placeholder="e.g. Inspect cross-slide ballscrew backlash & torque gib lock screws"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" onclick="closeModal('customPmsModal')">Cancel</button>
+        <button type="submit" class="btn-amber">Add PMS Task</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- MODAL: Confirm Reset Demo -->
+<div class="modal-backdrop" id="resetModal">
+  <div class="modal-box" style="max-width:440px;">
+    <div class="modal-header">
+      <h3>Reset to Sample Shop Data?</h3>
+      <button class="btn-sm" onclick="closeModal('resetModal')">✕</button>
+    </div>
+    <p style="color:var(--text-secondary);font-size:0.88rem;">
+      This will replace your current local storage records with the default 5-machine shop fleet, full PMS checklist matrix, and sample downtime logs. Export a JSON backup first if you want to keep your changes.
+    </p>
+    <div class="modal-footer">
+      <button type="button" onclick="closeModal('resetModal')">Cancel</button>
+      <button type="button" class="btn-red" onclick="executeResetSample()">Yes, Reset Data</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast Container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+/**
+ * ============================================================================
+ * SHOPFLOOR PMS & RELIABILITY LOGGER — DATA MODEL & SEED CATALOG
+ * ============================================================================
+ */
+const STORAGE_KEY = 'shopfloor_pms_logger_v1';
+
+// Standard PMS Master Template applied to rotating equipment
+const STANDARD_PMS_CATALOG = [
+  // Daily / Shift (10 hrs)
+  { tier: 'Daily / Shift', interval: 10, discipline: 'Mechanical', title: 'Way oil reservoir level & headstock splash/sight-glass lubrication flow check' },
+  { tier: 'Daily / Shift', interval: 10, discipline: 'Mechanical', title: 'Chuck jaws, scroll/master jaws & spindle taper cleaning + light oil film' },
+  { tier: 'Daily / Shift', interval: 10, discipline: 'Mechanical', title: 'Coolant sump level, tramp oil check & refractometer concentration check (5–8%)' },
+  { tier: 'Daily / Shift', interval: 10, discipline: 'Electrical', title: 'Emergency Stop (E-Stop) mushroom button, chuck guard interlock & foot brake test' },
+  { tier: 'Daily / Shift', interval: 10, discipline: 'Mechanical', title: 'Sensory check for abnormal spindle bearing noise, gear whine, or excessive vibration' },
+
+  // Weekly (50 hrs)
+  { tier: 'Weekly', interval: 50, discipline: 'Mechanical', title: 'Apron, saddle, cross-slide & compound rest manual oilers and wiper felt cleaning' },
+  { tier: 'Weekly', interval: 50, discipline: 'Mechanical', title: 'Tailstock quill, barrel lock & main leadscrew/feed rod cleaning and lubrication' },
+  { tier: 'Weekly', interval: 50, discipline: 'Mechanical', title: 'Main drive V-belt tension deflection check & pulley sheave alignment inspection' },
+  { tier: 'Weekly', interval: 50, discipline: 'Mechanical', title: 'Chip pan cleanout, coolant suction strainer flush & pump intake screen check' },
+  { tier: 'Weekly', interval: 50, discipline: 'Electrical', title: 'Push-button station, forward/reverse drum switch & magnetic contactor chatter check' },
+
+  // Monthly (200 hrs)
+  { tier: 'Monthly', interval: 200, discipline: 'Mechanical', title: 'Headstock, Norton feed gearbox & apron oil level/viscosity & moisture inspection' },
+  { tier: 'Monthly', interval: 200, discipline: 'Mechanical', title: 'Cross-slide & compound gib strip clearance and leadscrew backlash adjustment' },
+  { tier: 'Monthly', interval: 200, discipline: 'Electrical', title: 'Main motor cooling fan cowl, fins & control cabinet louver dust blow-out' },
+  { tier: 'Monthly', interval: 200, discipline: 'Electrical', title: 'Control panel terminal block tightness check & spot insulation resistance check' },
+  { tier: 'Monthly', interval: 200, discipline: 'Electrical', title: 'Thermal overload relay trip setting verification & VFD fault/alarm history review' },
+
+  // Quarterly (600 hrs)
+  { tier: 'Quarterly', interval: 600, discipline: 'Mechanical', title: 'Spindle bearing preload check & dial-indicator radial/axial runout test (<0.01 mm)' },
+  { tier: 'Quarterly', interval: 600, discipline: 'Mechanical', title: 'Hydraulic / forced lubrication pump suction filter & inline strainer replacement' },
+  { tier: 'Quarterly', interval: 600, discipline: 'Mechanical', title: 'Drive belt wear/glazing inspection & matched belt set replacement check' },
+  { tier: 'Quarterly', interval: 600, discipline: 'Electrical', title: 'Motor winding insulation resistance test (Megohmmeter @ 500V/1000V DC, >100 MΩ)' },
+  { tier: 'Quarterly', interval: 600, discipline: 'Electrical', title: 'Equipment chassis grounding & protective earth (PE) bonding continuity test (<0.1 Ω)' },
+
+  // Semi-Annual / Annual (1,200 - 2,400 hrs)
+  { tier: 'Semi-Annual / Annual', interval: 1200, discipline: 'Mechanical', title: 'Full headstock, gearbox & apron oil drain, magnetic plug clean, flush & ISO VG 68 refill' },
+  { tier: 'Semi-Annual / Annual', interval: 1800, discipline: 'Electrical', title: 'Drive motor bearing regreasing (polyurea/lithium complex) or bearing replacement' },
+  { tier: 'Semi-Annual / Annual', interval: 2400, discipline: 'Mechanical', title: 'Precision bed leveling, headstock-to-tailstock alignment & test-bar taper check' },
+  { tier: 'Semi-Annual / Annual', interval: 1200, discipline: 'Electrical', title: 'Full electrical panel infrared thermography scan & main breaker/contactor retorquing' },
+  { tier: 'Semi-Annual / Annual', interval: 1200, discipline: 'Mechanical', title: '3-jaw / 4-jaw chuck complete disassembly, ultrasonic/solvent clean & grease pack' }
+];
+
+const DOWNTIME_SUBCATEGORIES = {
+  'Unscheduled Mechanical': [
+    'Spindle / Motor Bearing Failure',
+    'V-Belt / Timing Belt Snap or Slip',
+    'Gearbox / Feed Apron Jam or Shear Pin',
+    'Chuck / Tailstock Mechanical Fault',
+    'Coolant / Lubrication Pump Failure',
+    'Way Wiper / Gib / Leadscrew Binding'
+  ],
+  'Unscheduled Electrical': [
+    'Main Motor Winding Burnout / Ground Fault',
+    'Magnetic Contactor / Control Relay Failure',
+    'VFD / Inverter Overcurrent or Overvoltage Trip',
+    'Thermal Overload Relay Trip',
+    'Limit Switch / E-Stop / Interlock Circuit Fault',
+    'Control Transformer / Fuse / Wiring Fault'
+  ],
+  'Scheduled PMS': [
+    'Daily / Weekly Lubrication & Inspection',
+    'Monthly / Quarterly PMS Shutdown',
+    'Semi-Annual Oil Change & Alignment',
+    'Electrical Megger & Thermography PMS'
+  ],
+  'Operational / Other': [
+    'Facility Power Outage / Voltage Sag',
+    'Waiting for Tooling / Inserts / Raw Stock',
+    'Operator Unavailable / Setup Changeover'
+  ]
+};
+
+let appState = {
+  machines: [],
+  pmsTasks: [],
+  downtimeLogs: [],
+  pmsHistory: []
+};
+
+/**
+ * Build rich sample shop data so the user immediately sees realistic
+ * running hours, overdue/due-soon tasks, and MTBF/MTTR metrics.
+ */
+function createSeedData() {
+  const machines = [
+    {
+      id: 'm1',
+      code: 'LATHE-01',
+      name: 'Engine Lathe #1 (Toolroom)',
+      model: 'Harrison M400 16"x60"',
+      power: '5.5 kW (7.5 HP)',
+      voltage: '440V 3-Ph 60Hz',
+      rpm: '40–2,000 RPM',
+      runningHours: 1412.5,
+      status: 'Running'
+    },
+    {
+      id: 'm2',
+      code: 'LATHE-02',
+      name: 'Heavy Duty Turret Lathe #2',
+      model: 'Warner & Swasey 2A Saddle',
+      power: '15 kW (20 HP)',
+      voltage: '440V 3-Ph 60Hz',
+      rpm: '28–1,500 RPM',
+      runningHours: 2385.0,
+      status: 'Scheduled PMS'
+    },
+    {
+      id: 'm3',
+      code: 'DRILL-01',
+      name: 'Radial Arm Drill Press',
+      model: 'Ikeda RM-1300',
+      power: '3.7 kW (5 HP)',
+      voltage: '440V 3-Ph 60Hz',
+      rpm: '45–1,800 RPM',
+      runningHours: 845.0,
+      status: 'Running'
+    },
+    {
+      id: 'm4',
+      code: 'MILL-01',
+      name: 'Horizontal Universal Milling Machine',
+      model: 'Cincinnati No. 3 Dial Type',
+      power: '7.5 kW (10 HP)',
+      voltage: '440V 3-Ph 60Hz',
+      rpm: '18–1,300 RPM',
+      runningHours: 1792.0,
+      status: 'Breakdown'
+    },
+    {
+      id: 'm5',
+      code: 'PUMP-01',
+      name: 'Central Coolant & Transfer Pump Skid',
+      model: 'Grundfos CR10-6 Multistage',
+      power: '2.2 kW (3 HP)',
+      voltage: '230/440V 3-Ph',
+      rpm: '3,500 RPM',
+      runningHours: 3110.0,
+      status: 'Running'
+    }
+  ];
+
+  const pmsTasks = [];
+  let taskCounter = 1;
+
+  machines.forEach((m, mIdx) => {
+    // Select relevant subset or full catalog tailored slightly per machine
+    STANDARD_PMS_CATALOG.forEach((tpl, tIdx) => {
+      // Skip lathe-specific chuck/tailstock tasks on the pump
+      if (m.code === 'PUMP-01' && (tpl.title.includes('Chuck') || tpl.title.includes('Tailstock') || tpl.title.includes('Apron'))) {
+        return;
+      }
+
+      // Compute realistic lastDoneHour so some are OK, some Due Soon, and a few Overdue
+      let remainderRatio = ((mIdx * 0.23 + tIdx * 0.17) % 0.92);
+      if ((mIdx === 1 && tIdx === 20) || (mIdx === 3 && tIdx === 13) || (mIdx === 0 && tIdx === 0)) {
+        remainderRatio = 1.06; // Overdue
+      } else if ((mIdx === 0 && tIdx === 10) || (mIdx === 4 && tIdx === 18)) {
+        remainderRatio = 0.88; // Due soon
+      }
+
+      const elapsed = Math.round(tpl.interval * remainderRatio * 10) / 10;
+      const lastDoneHour = Math.max(0, Math.round((m.runningHours - elapsed) * 10) / 10);
+
+      pmsTasks.push({
+        id: 'pms_' + (taskCounter++),
+        machineId: m.id,
+        tier: tpl.tier,
+        discipline: tpl.discipline,
+        title: tpl.title,
+        interval: tpl.interval,
+        lastDoneHour: lastDoneHour
+      });
+    });
+  });
+
+  const downtimeLogs = [
+    {
+      id: 'dt_1',
+      machineId: 'm4',
+      classification: 'Unscheduled Electrical',
+      subcategory: 'VFD / Inverter Overcurrent or Overvoltage Trip',
+      start: '2026-11-22T14:15',
+      end: '2026-11-22T17:45',
+      hours: 3.5,
+      rootCause: 'Spindle VFD Fault F0001 (Overcurrent) during heavy roughing pass; braking resistor thermal switch open.',
+      action: 'Inspected braking chopper IGBT, replaced open thermal cutout switch, verified motor phase balance.',
+      parts: 'Klixon thermal switch 120°C, 2m shielded control cable',
+      technician: 'R. Santos (RME)'
+    },
+    {
+      id: 'dt_2',
+      machineId: 'm2',
+      classification: 'Scheduled PMS',
+      subcategory: 'Semi-Annual Oil Change & Alignment',
+      start: '2026-11-21T08:00',
+      end: '2026-11-21T12:00',
+      hours: 4.0,
+      rootCause: 'Planned 1,200-hr headstock/gearbox oil flush and turret indexing alignment.',
+      action: 'Drained ISO VG 68 oil, cleaned magnetic drain plug, refilled 18L fresh oil, checked turret repeatability.',
+      parts: '18L Mobil DTE Heavy Medium (ISO VG 68), sump gasket',
+      technician: 'M. Villanueva'
+    },
+    {
+      id: 'dt_3',
+      machineId: 'm1',
+      classification: 'Unscheduled Mechanical',
+      subcategory: 'V-Belt / Timing Belt Snap or Slip',
+      start: '2026-11-18T09:30',
+      end: '2026-11-18T11:30',
+      hours: 2.0,
+      rootCause: 'Matched B-section drive belt frayed and slipping under high spindle torque.',
+      action: 'Replaced matched set of 3 B-52 V-belts, laser-aligned motor and headstock sheaves, tensioned to spec.',
+      parts: '3x Gates B52 Hi-Power II Belts',
+      technician: 'J. Dela Cruz'
+    },
+    {
+      id: 'dt_4',
+      machineId: 'm5',
+      classification: 'Unscheduled Mechanical',
+      subcategory: 'Coolant / Lubrication Pump Failure',
+      start: '2026-11-14T13:00',
+      end: '2026-11-14T15:30',
+      hours: 2.5,
+      rootCause: 'Mechanical shaft seal weeping due to fine cast-iron swarf bypassing strainer.',
+      action: 'Replaced silicon-carbide mechanical seal cartridge, flushed manifold, upgraded 100-mesh strainer.',
+      parts: 'Grundfos 16mm SiC/SiC Shaft Seal Kit',
+      technician: 'M. Villanueva'
+    },
+    {
+      id: 'dt_5',
+      machineId: 'm3',
+      classification: 'Unscheduled Electrical',
+      subcategory: 'Magnetic Contactor / Control Relay Failure',
+      start: '2026-11-10T10:00',
+      end: '2026-11-10T11:30',
+      hours: 1.5,
+      rootCause: 'Spindle forward contactor coil burned open (24VAC control circuit).',
+      action: 'Replaced 18A reversing contactor block, tested mechanical interlock and E-stop drop-out.',
+      parts: 'Schneider LC1D18B7 24VAC Contactor',
+      technician: 'R. Santos (RME)'
+    }
+  ];
+
+  const pmsHistory = [
+    {
+      id: 'hist_1',
+      timestamp: '2026-11-21 11:45',
+      machineId: 'm2',
+      tier: 'Semi-Annual / Annual',
+      discipline: 'Mechanical',
+      title: 'Full headstock, gearbox & apron oil drain, magnetic plug clean, flush & ISO VG 68 refill',
+      meterHour: 2380.0,
+      technician: 'M. Villanueva',
+      notes: 'Old oil dark but free of bronze/steel shavings. Refilled to upper sight glass mark.'
+    },
+    {
+      id: 'hist_2',
+      timestamp: '2026-11-19 16:10',
+      machineId: 'm1',
+      tier: 'Quarterly',
+      discipline: 'Electrical',
+      title: 'Motor winding insulation resistance test (Megohmmeter @ 500V/1000V DC, >100 MΩ)',
+      meterHour: 1390.0,
+      technician: 'R. Santos (RME)',
+      notes: 'U-G: 620 MΩ, V-G: 615 MΩ, W-G: 630 MΩ at 500V DC. Winding insulation healthy.'
+    },
+    {
+      id: 'hist_3',
+      timestamp: '2026-11-17 07:30',
+      machineId: 'm3',
+      tier: 'Monthly',
+      discipline: 'Mechanical',
+      title: 'Headstock, Norton feed gearbox & apron oil level/viscosity & moisture inspection',
+      meterHour: 810.0,
+      technician: 'J. Dela Cruz',
+      notes: 'Column elevation screw lubricated; quill return spring tension verified.'
+    }
+  ];
+
+  return { machines, pmsTasks, downtimeLogs, pmsHistory };
+}
+
+/**
+ * Load state from localStorage or initialize with sample shop data
+ */
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && Array.isArray(parsed.machines)) {
+        appState = parsed;
+        return;
+      }
+    }
+  } catch (err) {
+    console.error('Failed to read localStorage:', err);
+  }
+  appState = createSeedData();
+  saveState();
+}
+
+function saveState() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+  } catch (err) {
+    showToast('Warning: Unable to save to browser localStorage.', 'error');
+  }
+}
+
+/**
+ * Helper: PMS Status Computation
+ */
+function evaluatePmsTask(task, machine) {
+  const currentHr = machine ? Number(machine.runningHours) : 0;
+  const nextDueHr = Number((task.lastDoneHour + task.interval).toFixed(1));
+  const remainingHr = Number((nextDueHr - currentHr).toFixed(1));
+  const elapsedHr = Math.max(0, currentHr - task.lastDoneHour);
+  const pctUsed = Math.min(150, Math.round((elapsedHr / task.interval) * 100));
+
+  let state = 'OK';
+  if (remainingHr <= 0) {
+    state = 'OVERDUE';
+  } else if (pctUsed >= 80) {
+    state = 'DUE_SOON';
+  }
+
+  return { nextDueHr, remainingHr, pctUsed, state };
+}
+
+function getMachineById(id) {
+  return appState.machines.find(m => m.id === id);
+}
+
+/**
+ * Master Render Orchestrator
+ */
+function renderAll() {
+  populateMachineDropdowns();
+  renderGlobalKPIs();
+  renderFleet();
+  renderPmsTable();
+  renderDowntimeTable();
+  renderHistoryTable();
+  renderAnalytics();
+}
+
+function populateMachineDropdowns() {
+  const selectors = ['pmsMachineFilter', 'dtMachine', 'dtFilterMachine', 'histMachineFilter', 'cpMachine'];
+  selectors.forEach(selId => {
+    const el = document.getElementById(selId);
+    if (!el) return;
+    const prev = el.value;
+    const hasAll = selId.includes('Filter');
+    el.innerHTML = hasAll ? '<option value="ALL">All Equipment</option>' : '';
+    appState.machines.forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m.id;
+      opt.textContent = `${m.code} — ${m.name}`;
+      el.appendChild(opt);
+    });
+    if (prev && [...el.options].some(o => o.value === prev)) {
+      el.value = prev;
+    }
+  });
+}
+
+/**
+ * Render Global KPI Cards & Navigation Counters
+ */
+function renderGlobalKPIs() {
+  const totalMachines = appState.machines.length;
+  const runningCount = appState.machines.filter(m => m.status === 'Running').length;
+  const totalRunHrs = appState.machines.reduce((acc, m) => acc + Number(m.runningHours || 0), 0);
+
+  let overdueCount = 0;
+  let dueSoonCount = 0;
+  appState.pmsTasks.forEach(t => {
+    const m = getMachineById(t.machineId);
+    if (!m) return;
+    const ev = evaluatePmsTask(t, m);
+    if (ev.state === 'OVERDUE') overdueCount++;
+    else if (ev.state === 'DUE_SOON') dueSoonCount++;
+  });
+
+  const unschedLogs = appState.downtimeLogs.filter(d => d.classification.startsWith('Unscheduled'));
+  const unschedHrs = unschedLogs.reduce((acc, d) => acc + Number(d.hours || 0), 0);
+  const totalDtHrs = appState.downtimeLogs.reduce((acc, d) => acc + Number(d.hours || 0), 0);
+  const availability = (totalRunHrs + totalDtHrs) > 0
+    ? ((totalRunHrs / (totalRunHrs + totalDtHrs)) * 100).toFixed(2)
+    : '100.00';
+
+  document.getElementById('navFleetCount').textContent = totalMachines;
+  document.getElementById('navPmsDueCount').textContent = overdueCount + dueSoonCount;
+  document.getElementById('navDowntimeCount').textContent = appState.downtimeLogs.length;
+  document.getElementById('navHistoryCount').textContent = appState.pmsHistory.length;
+
+  const grid = document.getElementById('globalKpiGrid');
+  grid.innerHTML = `
+    <div class="kpi-card emerald">
+      <div class="kpi-label">Active Shop Fleet</div>
+      <div class="kpi-value">${runningCount} / ${totalMachines}</div>
+      <div class="kpi-sub">Machines currently in production</div>
+    </div>
+    <div class="kpi-card amber">
+      <div class="kpi-label">Cumulative Running Hours</div>
+      <div class="kpi-value">${totalRunHrs.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} <span style="font-size:0.9rem;color:var(--text-secondary)">hrs</span></div>
+      <div class="kpi-sub">Total fleet meter hours logged</div>
+    </div>
+    <div class="kpi-card ${overdueCount > 0 ? 'red' : 'amber'}">
+      <div class="kpi-label">PMS Action Required</div>
+      <div class="kpi-value" style="color:${overdueCount > 0 ? '#fca5a5' : 'var(--amber)'}">${overdueCount} <span style="font-size:0.9rem;">Overdue</span> / ${dueSoonCount} <span style="font-size:0.9rem;">Soon</span></div>
+      <div class="kpi-sub">Out of ${appState.pmsTasks.length} scheduled PMS intervals</div>
+    </div>
+    <div class="kpi-card blue">
+      <div class="kpi-label">Fleet Availability</div>
+      <div class="kpi-value">${availability}%</div>
+      <div class="kpi-sub">${unschedHrs.toFixed(1)}h unscheduled / ${totalDtHrs.toFixed(1)}h total DT</div>
+    </div>
+  `;
+}
+
+/**
+ * TAB 1: Render Equipment Fleet Cards
+ */
+function renderFleet() {
+  const statusFilter = document.getElementById('fleetStatusFilter').value;
+  const grid = document.getElementById('fleetGrid');
+  const filtered = appState.machines.filter(m => statusFilter === 'ALL' || m.status === statusFilter);
+
+  if (filtered.length === 0) {
+    grid.innerHTML = `<div class="panel-card" style="grid-column:1/-1;text-align:center;color:var(--text-secondary);">No equipment matches the selected status filter.</div>`;
+    return;
+  }
+
+  grid.innerHTML = filtered.map(m => {
+    const tasks = appState.pmsTasks.filter(t => t.machineId === m.id);
+    let overdue = 0, dueSoon = 0;
+    tasks.forEach(t => {
+      const ev = evaluatePmsTask(t, m);
+      if (ev.state === 'OVERDUE') overdue++;
+      else if (ev.state === 'DUE_SOON') dueSoon++;
+    });
+
+    let pillClass = 'pill-running';
+    if (m.status === 'Idle') pillClass = 'pill-idle';
+    else if (m.status === 'Scheduled PMS') pillClass = 'pill-pms';
+    else if (m.status === 'Breakdown') pillClass = 'pill-breakdown';
+
+    return `
+      <article class="machine-card">
+        <div class="machine-header">
+          <div>
+            <div class="machine-id">${escapeHtml(m.code)}</div>
+            <div class="machine-name">${escapeHtml(m.name)}</div>
+            <div class="machine-model">${escapeHtml(m.model || 'Standard Industrial Spec')}</div>
+          </div>
+          <span class="pill ${pillClass}"><span class="pill-dot"></span>${escapeHtml(m.status)}</span>
+        </div>
+
+        <div class="specs-row">
+          <div class="spec-item">
+            <span>Motor Rating</span>
+            <strong>${escapeHtml(m.power)}</strong>
+          </div>
+          <div class="spec-item">
+            <span>Supply</span>
+            <strong>${escapeHtml(m.voltage)}</strong>
+          </div>
+          <div class="spec-item">
+            <span>Speed Range</span>
+            <strong>${escapeHtml(m.rpm)}</strong>
+          </div>
+        </div>
+
+        <div class="meter-box">
+          <div>
+            <div style="font-size:0.7rem;text-transform:uppercase;color:var(--text-secondary);font-weight:700;">Cumulative Meter</div>
+            <div class="meter-reading">${Number(m.runningHours).toFixed(1)} hrs</div>
+          </div>
+          <form class="shift-quick-form no-print" onsubmit="logShiftHours(event, '${m.id}')">
+            <input type="number" id="shiftInput_${m.id}" step="0.5" min="0.5" max="24" value="8" aria-label="Shift hours to add">
+            <button type="submit" class="btn-amber btn-sm" title="Add shift running hours">+ Log Hrs</button>
+          </form>
+        </div>
+
+        <div class="pms-health-summary">
+          <span>PMS Tasks: <strong>${tasks.length}</strong></span>
+          <span>
+            ${overdue > 0 ? `<span style="color:#fca5a5;font-weight:700;">● ${overdue} Overdue</span>` : ''}
+            ${dueSoon > 0 ? `<span style="color:var(--amber);font-weight:700;margin-left:6px;">● ${dueSoon} Due Soon</span>` : ''}
+            ${overdue === 0 && dueSoon === 0 ? `<span style="color:var(--emerald);font-weight:700;">● All Intervals OK</span>` : ''}
+          </span>
+        </div>
+
+        <div class="card-actions no-print">
+          <button class="btn-sm" onclick="filterPmsByMachine('${m.id}')">View PMS (${tasks.length})</button>
+          <button class="btn-sm" onclick="openMachineModal('${m.id}')">Edit Specs</button>
+          <button class="btn-sm btn-red" style="flex:0;" onclick="deleteMachine('${m.id}')" title="Remove Machine">✕</button>
+        </div>
+      </article>
+    `;
+  }).join('');
+}
+
+function logShiftHours(e, machineId) {
+  e.preventDefault();
+  const input = document.getElementById(`shiftInput_${machineId}`);
+  const addHrs = parseFloat(input.value);
+  if (isNaN(addHrs) || addHrs <= 0) return;
+
+  const machine = getMachineById(machineId);
+  if (!machine) return;
+
+  machine.runningHours = Number((Number(machine.runningHours) + addHrs).toFixed(1));
+  saveState();
+  renderAll();
+  showToast(`Added +${addHrs} hrs to ${machine.code} (Total: ${machine.runningHours} hrs)`);
+}
+
+function filterPmsByMachine(machineId) {
+  document.getElementById('pmsMachineFilter').value = machineId;
+  switchTab('pms');
+}
+
+/**
+ * TAB 2: Render PMS Interval Matrix Table
+ */
+function renderPmsTable() {
+  const mFilter = document.getElementById('pmsMachineFilter').value;
+  const tFilter = document.getElementById('pmsTierFilter').value;
+  const dFilter = document.getElementById('pmsDiscFilter').value;
+  const sFilter = document.getElementById('pmsStateFilter').value;
+
+  const rows = [];
+  appState.pmsTasks.forEach(task => {
+    const machine = getMachineById(task.machineId);
+    if (!machine) return;
+    if (mFilter !== 'ALL' && task.machineId !== mFilter) return;
+    if (tFilter !== 'ALL' && task.tier !== tFilter) return;
+    if (dFilter !== 'ALL' && task.discipline !== dFilter) return;
+
+    const evalData = evaluatePmsTask(task, machine);
+    if (sFilter !== 'ALL' && evalData.state !== sFilter) return;
+
+    rows.push({ task, machine, evalData });
+  });
+
+  // Sort by urgency (lowest remaining hours first)
+  rows.sort((a, b) => a.evalData.remainingHr - b.evalData.remainingHr);
+
+  const tbody = document.getElementById('pmsTableBody');
+  if (rows.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--text-secondary);padding:1.5rem;">No PMS tasks match the active filters.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = rows.map(({ task, machine, evalData }) => {
+    const discPill = task.discipline === 'Electrical'
+      ? '<span class="pill pill-elec">Electrical</span>'
+      : '<span class="pill pill-mech">Mechanical</span>';
+
+    let fillClass = 'fill-ok';
+    let statusText = `<span style="color:var(--emerald);font-weight:700;">OK (${evalData.pctUsed}%)</span>`;
+    if (evalData.state === 'OVERDUE') {
+      fillClass = 'fill-overdue';
+      statusText = `<span style="color:#fca5a5;font-weight:700;">OVERDUE (${evalData.pctUsed}%)</span>`;
+    } else if (evalData.state === 'DUE_SOON') {
+      fillClass = 'fill-warn';
+      statusText = `<span style="color:var(--amber);font-weight:700;">DUE SOON (${evalData.pctUsed}%)</span>`;
+    }
+
+    const barWidth = Math.min(100, Math.max(4, evalData.pctUsed));
+    const remFormatted = evalData.remainingHr <= 0
+      ? `<span style="color:#fca5a5;font-weight:700;">${evalData.remainingHr.toFixed(1)} hrs</span>`
+      : `<span>+${evalData.remainingHr.toFixed(1)} hrs</span>`;
+
+    return `
+      <tr>
+        <td>
+          <div class="mono" style="color:var(--amber);font-weight:700;font-size:0.78rem;">${escapeHtml(machine.code)}</div>
+          <div style="font-size:0.78rem;color:var(--text-secondary);">${escapeHtml(machine.name)}</div>
+        </td>
+        <td style="white-space:nowrap;font-weight:600;font-size:0.8rem;">${escapeHtml(task.tier)}</td>
+        <td>${discPill}</td>
+        <td style="max-width:360px;">${escapeHtml(task.title)}</td>
+        <td class="mono">${task.interval}h</td>
+        <td class="mono">${Number(task.lastDoneHour).toFixed(1)}</td>
+        <td class="mono">${evalData.nextDueHr.toFixed(1)}</td>
+        <td class="mono">${remFormatted}</td>
+        <td>
+          <div class="progress-track">
+            <div class="progress-fill ${fillClass}" style="width:${barWidth}%"></div>
+          </div>
+          <div style="font-size:0.72rem;">${statusText}</div>
+        </td>
+        <td class="no-print">
+          <button class="btn-emerald btn-sm" onclick="openCompletePmsModal('${task.id}')">✓ Complete</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+/**
+ * Complete PMS Task Workflow
+ */
+function openCompletePmsModal(taskId) {
+  const task = appState.pmsTasks.find(t => t.id === taskId);
+  if (!task) return;
+  const machine = getMachineById(task.machineId);
+  if (!machine) return;
+
+  document.getElementById('compPmsTaskId').value = task.id;
+  document.getElementById('compPmsSummary').innerHTML = `
+    <div style="color:var(--amber);font-weight:700;">${escapeHtml(machine.code)} — ${escapeHtml(machine.name)}</div>
+    <div style="margin-top:0.25rem;"><strong>[${escapeHtml(task.tier)} | ${escapeHtml(task.discipline)}]</strong> ${escapeHtml(task.title)}</div>
+  `;
+  document.getElementById('compPmsHour').value = machine.runningHours;
+  document.getElementById('compPmsNotes').value = '';
+  openModal('completePmsModal');
+}
+
+function submitCompletePms(e) {
+  e.preventDefault();
+  const taskId = document.getElementById('compPmsTaskId').value;
+  const compHour = parseFloat(document.getElementById('compPmsHour').value);
+  const tech = document.getElementById('compPmsTech').value.trim();
+  const notes = document.getElementById('compPmsNotes').value.trim();
+
+  const task = appState.pmsTasks.find(t => t.id === taskId);
+  if (!task) return;
+  const machine = getMachineById(task.machineId);
+
+  task.lastDoneHour = compHour;
+  if (machine && compHour > machine.runningHours) {
+    machine.runningHours = compHour;
+  }
+
+  const now = new Date();
+  const ts = now.toISOString().slice(0, 16).replace('T', ' ');
+
+  appState.pmsHistory.unshift({
+    id: 'hist_' + Date.now(),
+    timestamp: ts,
+    machineId: task.machineId,
+    tier: task.tier,
+    discipline: task.discipline,
+    title: task.title,
+    meterHour: compHour,
+    technician: tech,
+    notes: notes || 'Completed within shop standard.'
+  });
+
+  saveState();
+  closeModal('completePmsModal');
+  renderAll();
+  showToast(`PMS task logged for ${machine ? machine.code : 'machine'} at ${compHour} hrs.`);
+}
+
+/**
+ * Custom PMS Task Creation
+ */
+function openCustomPmsModal() {
+  populateMachineDropdowns();
+  const mId = document.getElementById('cpMachine').value;
+  const m = getMachineById(mId);
+  document.getElementById('cpLastDone').value = m ? m.runningHours : 0;
+  document.getElementById('cpTitle').value = '';
+  openModal('customPmsModal');
+}
+
+function syncCustomInterval() {
+  const tier = document.getElementById('cpTier').value;
+  const map = {
+    'Daily / Shift': 10,
+    'Weekly': 50,
+    'Monthly': 200,
+    'Quarterly': 600,
+    'Semi-Annual / Annual': 1200
+  };
+  document.getElementById('cpInterval').value = map[tier] || 200;
+}
+
+function saveCustomPms(e) {
+  e.preventDefault();
+  const machineId = document.getElementById('cpMachine').value;
+  const tier = document.getElementById('cpTier').value;
+  const discipline = document.getElementById('cpDisc').value;
+  const interval = parseFloat(document.getElementById('cpInterval').value);
+  const lastDoneHour = parseFloat(document.getElementById('cpLastDone').value);
+  const title = document.getElementById('cpTitle').value.trim();
+
+  appState.pmsTasks.push({
+    id: 'pms_' + Date.now(),
+    machineId,
+    tier,
+    discipline,
+    title,
+    interval,
+    lastDoneHour
+  });
+
+  saveState();
+  closeModal('customPmsModal');
+  renderAll();
+  showToast('Custom PMS task added to interval matrix.');
+}
+
+/**
+ * TAB 3: Downtime Logger
+ */
+function initDowntimeFormDefaults() {
+  updateSubcategoryOptions();
+  const now = new Date();
+  const twoHrsAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+  document.getElementById('dtStart').value = toLocalDatetimeString(twoHrsAgo);
+  document.getElementById('dtEnd').value = toLocalDatetimeString(now);
+  document.getElementById('dtHours').value = '2.0';
+}
+
+function toLocalDatetimeString(dateObj) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${dateObj.getFullYear()}-${pad(dateObj.getMonth() + 1)}-${pad(dateObj.getDate())}T${pad(dateObj.getHours())}:${pad(dateObj.getMinutes())}`;
+}
+
+function updateSubcategoryOptions() {
+  const cls = document.getElementById('dtClass').value;
+  const subSel = document.getElementById('dtSubcat');
+  const items = DOWNTIME_SUBCATEGORIES[cls] || [];
+  subSel.innerHTML = items.map(item => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join('');
+}
+
+function autoCalcDowntimeHours() {
+  const s = document.getElementById('dtStart').value;
+  const e = document.getElementById('dtEnd').value;
+  if (!s || !e) return;
+  const diffMs = new Date(e) - new Date(s);
+  if (diffMs > 0) {
+    const hrs = Math.round((diffMs / (1000 * 60 * 60)) * 10) / 10;
+    document.getElementById('dtHours').value = Math.max(0.1, hrs).toFixed(1);
+  }
+}
+
+function submitDowntime(e) {
+  e.preventDefault();
+  const entry = {
+    id: 'dt_' + Date.now(),
+    machineId: document.getElementById('dtMachine').value,
+    classification: document.getElementById('dtClass').value,
+    subcategory: document.getElementById('dtSubcat').value,
+    start: document.getElementById('dtStart').value,
+    end: document.getElementById('dtEnd').value,
+    hours: parseFloat(document.getElementById('dtHours').value),
+    technician: document.getElementById('dtTech').value.trim(),
+    rootCause: document.getElementById('dtRootCause').value.trim(),
+    action: document.getElementById('dtAction').value.trim(),
+    parts: document.getElementById('dtParts').value.trim() || 'None'
+  };
+
+  appState.downtimeLogs.unshift(entry);
+  saveState();
+
+  document.getElementById('dtRootCause').value = '';
+  document.getElementById('dtAction').value = '';
+  document.getElementById('dtParts').value = '';
+
+  renderAll();
+  showToast(`Logged ${entry.hours}h ${entry.classification} event.`);
+}
+
+function renderDowntimeTable() {
+  const mFilter = document.getElementById('dtFilterMachine').value;
+  const cFilter = document.getElementById('dtFilterClass').value;
+
+  const filtered = appState.downtimeLogs.filter(d => {
+    if (mFilter !== 'ALL' && d.machineId !== mFilter) return false;
+    if (cFilter !== 'ALL' && d.classification !== cFilter) return false;
+    return true;
+  });
+
+  const tbody = document.getElementById('downtimeTableBody');
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-secondary);padding:1.5rem;">No downtime records match the selected filters.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(d => {
+    const m = getMachineById(d.machineId);
+    let badge = '<span class="pill pill-idle">Operational</span>';
+    if (d.classification === 'Scheduled PMS') badge = '<span class="pill pill-pms">Scheduled PMS</span>';
+    else if (d.classification === 'Unscheduled Mechanical') badge = '<span class="pill pill-mech">Unsched. Mech</span>';
+    else if (d.classification === 'Unscheduled Electrical') badge = '<span class="pill pill-elec">Unsched. Elec</span>';
+
+    return `
+      <tr>
+        <td class="mono" style="font-size:0.77rem;white-space:nowrap;">
+          <div>${escapeHtml((d.start || '').replace('T', ' '))}</div>
+          <div style="color:var(--text-muted);">to ${escapeHtml((d.end || '').replace('T', ' '))}</div>
+        </td>
+        <td>
+          <div class="mono" style="color:var(--amber);font-weight:700;font-size:0.78rem;">${m ? escapeHtml(m.code) : 'N/A'}</div>
+          <div style="font-size:0.76rem;color:var(--text-secondary);">${m ? escapeHtml(m.name) : ''}</div>
+        </td>
+        <td>
+          ${badge}
+          <div style="font-size:0.74rem;color:var(--text-secondary);margin-top:0.25rem;">${escapeHtml(d.subcategory)}</div>
+        </td>
+        <td class="mono" style="font-weight:700;color:#fca5a5;">${Number(d.hours).toFixed(1)}h</td>
+        <td style="max-width:320px;">
+          <div style="font-weight:600;font-size:0.82rem;">Cause: ${escapeHtml(d.rootCause)}</div>
+          <div style="color:var(--text-secondary);font-size:0.79rem;margin-top:0.2rem;">Fix: ${escapeHtml(d.action)}</div>
+        </td>
+        <td style="font-size:0.78rem;">
+          <div><strong>Tech:</strong> ${escapeHtml(d.technician)}</div>
+          <div style="color:var(--text-secondary);"><strong>Parts:</strong> ${escapeHtml(d.parts)}</div>
+        </td>
+        <td class="no-print">
+          <button class="btn-sm btn-red" onclick="deleteDowntime('${d.id}')" title="Delete Entry">✕</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function deleteDowntime(id) {
+  appState.downtimeLogs = appState.downtimeLogs.filter(d => d.id !== id);
+  saveState();
+  renderAll();
+  showToast('Downtime log entry removed.', 'warn');
+}
+
+/**
+ * TAB 4: Render Completed PMS History
+ */
+function renderHistoryTable() {
+  const mFilter = document.getElementById('histMachineFilter').value;
+  const filtered = appState.pmsHistory.filter(h => mFilter === 'ALL' || h.machineId === mFilter);
+
+  const tbody = document.getElementById('historyTableBody');
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--text-secondary);padding:1.5rem;">No completed PMS history logged yet.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(h => {
+    const m = getMachineById(h.machineId);
+    const discPill = h.discipline === 'Electrical'
+      ? '<span class="pill pill-elec">Electrical</span>'
+      : '<span class="pill pill-mech">Mechanical</span>';
+    return `
+      <tr>
+        <td class="mono" style="font-size:0.78rem;white-space:nowrap;">${escapeHtml(h.timestamp)}</td>
+        <td>
+          <span class="mono" style="color:var(--amber);font-weight:700;">${m ? escapeHtml(m.code) : 'N/A'}</span>
+          <div style="font-size:0.75rem;color:var(--text-secondary);">${m ? escapeHtml(m.name) : ''}</div>
+        </td>
+        <td style="font-size:0.79rem;font-weight:600;">${escapeHtml(h.tier)}</td>
+        <td>${discPill}</td>
+        <td style="max-width:300px;">${escapeHtml(h.title)}</td>
+        <td class="mono" style="font-weight:700;">${Number(h.meterHour).toFixed(1)}h</td>
+        <td style="font-size:0.8rem;">${escapeHtml(h.technician)}</td>
+        <td style="font-size:0.79rem;color:var(--text-secondary);max-width:260px;">${escapeHtml(h.notes)}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+/**
+ * TAB 5: Reliability KPIs (Availability, MTBF, MTTR) & Visual Breakdown
+ */
+function renderAnalytics() {
+  const tbody = document.getElementById('analyticsTableBody');
+  const chartBox = document.getElementById('downtimeVisualChart');
+
+  let maxTotalDt = 0.1;
+  const rows = appState.machines.map(m => {
+    const logs = appState.downtimeLogs.filter(d => d.machineId === m.id);
+    const schedHrs = logs.filter(d => d.classification === 'Scheduled PMS').reduce((a, b) => a + Number(b.hours), 0);
+    const mechHrs = logs.filter(d => d.classification === 'Unscheduled Mechanical').reduce((a, b) => a + Number(b.hours), 0);
+    const elecHrs = logs.filter(d => d.classification === 'Unscheduled Electrical').reduce((a, b) => a + Number(b.hours), 0);
+    const opsHrs = logs.filter(d => d.classification === 'Operational / Other').reduce((a, b) => a + Number(b.hours), 0);
+
+    const unschedLogs = logs.filter(d => d.classification.startsWith('Unscheduled'));
+    const unschedCount = unschedLogs.length;
+    const unschedHrs = mechHrs + elecHrs;
+    const totalDt = schedHrs + unschedHrs + opsHrs;
+    if (totalDt > maxTotalDt) maxTotalDt = totalDt;
+
+    const runHrs = Number(m.runningHours || 0);
+    const avail = (runHrs + totalDt) > 0 ? ((runHrs / (runHrs + totalDt)) * 100).toFixed(2) : '100.00';
+    const mtbf = unschedCount > 0 ? (runHrs / unschedCount).toFixed(1) : runHrs.toFixed(1) + '+';
+    const mttr = unschedCount > 0 ? (unschedHrs / unschedCount).toFixed(2) : '0.00';
+
+    return { m, runHrs, schedHrs, mechHrs, elecHrs, opsHrs, totalDt, unschedCount, avail, mtbf, mttr };
+  });
+
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td class="mono" style="color:var(--amber);font-weight:700;">${escapeHtml(r.m.code)}</td>
+      <td style="font-weight:600;">${escapeHtml(r.m.name)}</td>
+      <td class="mono">${r.runHrs.toFixed(1)}</td>
+      <td class="mono" style="color:var(--amber);">${r.schedHrs.toFixed(1)}</td>
+      <td class="mono" style="color:#93c5fd;">${r.mechHrs.toFixed(1)}</td>
+      <td class="mono" style="color:#d8b4fe;">${r.elecHrs.toFixed(1)}</td>
+      <td class="mono" style="color:var(--text-secondary);">${r.opsHrs.toFixed(1)}</td>
+      <td class="mono">${r.unschedCount}</td>
+      <td class="mono" style="font-weight:700;color:${Number(r.avail) >= 98 ? 'var(--emerald)' : 'var(--amber)'};">${r.avail}%</td>
+      <td class="mono">${r.mtbf}</td>
+      <td class="mono">${r.mttr}</td>
+    </tr>
+  `).join('');
+
+  chartBox.innerHTML = rows.map(r => {
+    const wSched = (r.schedHrs / maxTotalDt) * 100;
+    const wMech = (r.mechHrs / maxTotalDt) * 100;
+    const wElec = (r.elecHrs / maxTotalDt) * 100;
+    const wOps = (r.opsHrs / maxTotalDt) * 100;
+    return `
+      <div class="bar-chart-row">
+        <div class="bar-chart-labels">
+          <span><strong class="mono" style="color:var(--amber);">${escapeHtml(r.m.code)}</strong> — ${escapeHtml(r.m.name)}</span>
+          <span class="mono" style="color:var(--text-secondary);">Total Downtime: <strong>${r.totalDt.toFixed(1)} hrs</strong> (Avail: ${r.avail}%)</span>
+        </div>
+        <div class="stacked-bar">
+          <div class="seg-sched" style="width:${wSched}%" title="Scheduled PMS: ${r.schedHrs.toFixed(1)}h"></div>
+          <div class="seg-mech" style="width:${wMech}%" title="Unscheduled Mechanical: ${r.mechHrs.toFixed(1)}h"></div>
+          <div class="seg-elec" style="width:${wElec}%" title="Unscheduled Electrical: ${r.elecHrs.toFixed(1)}h"></div>
+          <div class="seg-ops" style="width:${wOps}%" title="Operational / Other: ${r.opsHrs.toFixed(1)}h"></div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+/**
+ * Equipment Add / Edit / Delete
+ */
+function openMachineModal(machineId = null) {
+  document.getElementById('editMachineId').value = machineId || '';
+  if (machineId) {
+    const m = getMachineById(machineId);
+    if (!m) return;
+    document.getElementById('machineModalTitle').textContent = `Edit Equipment (${m.code})`;
+    document.getElementById('mCode').value = m.code;
+    document.getElementById('mStatus').value = m.status;
+    document.getElementById('mName').value = m.name;
+    document.getElementById('mModel').value = m.model || '';
+    document.getElementById('mPower').value = m.power;
+    document.getElementById('mVoltage').value = m.voltage;
+    document.getElementById('mRpm').value = m.rpm;
+    document.getElementById('mHours').value = m.runningHours;
+  } else {
+    document.getElementById('machineModalTitle').textContent = 'Add Rotating Equipment';
+    document.getElementById('machineForm').reset();
+    document.getElementById('mHours').value = 0;
+  }
+  openModal('machineModal');
+}
+
+function saveMachine(e) {
+  e.preventDefault();
+  const editId = document.getElementById('editMachineId').value;
+  const payload = {
+    code: document.getElementById('mCode').value.trim().toUpperCase(),
+    status: document.getElementById('mStatus').value,
+    name: document.getElementById('mName').value.trim(),
+    model: document.getElementById('mModel').value.trim(),
+    power: document.getElementById('mPower').value.trim(),
+    voltage: document.getElementById('mVoltage').value.trim(),
+    rpm: document.getElementById('mRpm').value.trim(),
+    runningHours: parseFloat(document.getElementById('mHours').value) || 0
+  };
+
+  if (editId) {
+    const existing = getMachineById(editId);
+    if (existing) Object.assign(existing, payload);
+    showToast(`Updated ${payload.code} specifications.`);
+  } else {
+    const newId = 'm_' + Date.now();
+    appState.machines.push({ id: newId, ...payload });
+    // Seed standard PMS checklist for new machine
+    STANDARD_PMS_CATALOG.forEach((tpl, idx) => {
+      appState.pmsTasks.push({
+        id: `pms_${Date.now()}_${idx}`,
+        machineId: newId,
+        tier: tpl.tier,
+        discipline: tpl.discipline,
+        title: tpl.title,
+        interval: tpl.interval,
+        lastDoneHour: payload.runningHours
+      });
+    });
+    showToast(`Added ${payload.code} with ${STANDARD_PMS_CATALOG.length} standard PMS tasks.`);
+  }
+
+  saveState();
+  closeModal('machineModal');
+  renderAll();
+}
+
+function deleteMachine(machineId) {
+  const m = getMachineById(machineId);
+  if (!m) return;
+  appState.machines = appState.machines.filter(item => item.id !== machineId);
+  appState.pmsTasks = appState.pmsTasks.filter(t => t.machineId !== machineId);
+  appState.downtimeLogs = appState.downtimeLogs.filter(d => d.machineId !== machineId);
+  appState.pmsHistory = appState.pmsHistory.filter(h => h.machineId !== machineId);
+  saveState();
+  renderAll();
+  showToast(`Removed ${m.code} and associated logs.`, 'warn');
+}
+
+/**
+ * CSV & JSON Data Portability + Print
+ */
+function exportCSV() {
+  const lines = [];
+  lines.push('SECTION,EQUIPMENT_CODE,EQUIPMENT_NAME,CATEGORY_OR_TIER,DISCIPLINE_OR_SUBCAT,HOURS_OR_INTERVAL,METER_OR_WINDOW,DETAILS,TECHNICIAN');
+
+  appState.pmsTasks.forEach(t => {
+    const m = getMachineById(t.machineId);
+    const ev = m ? evaluatePmsTask(t, m) : { nextDueHr: 0, state: '' };
+    lines.push([
+      'PMS_SCHEDULE',
+      csvCell(m ? m.code : ''),
+      csvCell(m ? m.name : ''),
+      csvCell(t.tier),
+      csvCell(t.discipline),
+      csvCell(`${t.interval}h (Rem: ${ev.remainingHr}h)`),
+      csvCell(`Last: ${t.lastDoneHour}h / Due: ${ev.nextDueHr}h`),
+      csvCell(`${ev.state} - ${t.title}`),
+      ''
+    ].join(','));
+  });
+
+  appState.downtimeLogs.forEach(d => {
+    const m = getMachineById(d.machineId);
+    lines.push([
+      'DOWNTIME_LOG',
+      csvCell(m ? m.code : ''),
+      csvCell(m ? m.name : ''),
+      csvCell(d.classification),
+      csvCell(d.subcategory),
+      csvCell(`${d.hours}h`),
+      csvCell(`${d.start} to ${d.end}`),
+      csvCell(`Cause: ${d.rootCause} | Fix: ${d.action} | Parts: ${d.parts}`),
+      csvCell(d.technician)
+    ].join(','));
+  });
+
+  downloadFile(lines.join('\n'), `shopfloor_pms_downtime_${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv;charset=utf-8;');
+  showToast('Exported PMS & Downtime report to CSV.');
+}
+
+function csvCell(val) {
+  const s = String(val == null ? '' : val).replace(/"/g, '""');
+  return `"${s}"`;
+}
+
+function exportJSON() {
+  const jsonStr = JSON.stringify(appState, null, 2);
+  downloadFile(jsonStr, `shopfloor_pms_backup_${new Date().toISOString().slice(0, 10)}.json`, 'application/json');
+  showToast('Full JSON backup downloaded.');
+}
+
+function triggerImportJSON() {
+  document.getElementById('jsonFileInput').click();
+}
+
+function handleImportJSON(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const parsed = JSON.parse(e.target.result);
+      if (!parsed || !Array.isArray(parsed.machines) || !Array.isArray(parsed.pmsTasks)) {
+        throw new Error('Invalid backup structure');
+      }
+      appState = {
+        machines: parsed.machines,
+        pmsTasks: parsed.pmsTasks,
+        downtimeLogs: parsed.downtimeLogs || [],
+        pmsHistory: parsed.pmsHistory || []
+      };
+      saveState();
+      renderAll();
+      showToast('JSON backup restored successfully.');
+    } catch (err) {
+      showToast('Invalid JSON backup file.', 'error');
+    }
+    event.target.value = '';
+  };
+  reader.readAsText(file);
+}
+
+function downloadFile(content, filename, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function printChecksheet() {
+  document.getElementById('printTimestamp').textContent = `Generated: ${new Date().toLocaleString()}`;
+  window.print();
+}
+
+function confirmResetSample() {
+  openModal('resetModal');
+}
+
+function executeResetSample() {
+  appState = createSeedData();
+  saveState();
+  closeModal('resetModal');
+  renderAll();
+  showToast('Reset to default 5-machine sample shop data.');
+}
+
+/**
+ * Navigation, Modals, Toasts & Sanitization
+ */
+function switchTab(tabKey) {
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tabKey);
+  });
+  document.querySelectorAll('.tab-panel').forEach(panel => {
+    panel.classList.toggle('active', panel.id === `tab-${tabKey}`);
+  });
+}
+
+function openModal(id) {
+  document.getElementById(id).classList.add('open');
+}
+
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+}
+
+function showToast(message, type = 'success') {
+  const container = document.getElementById('toastContainer');
+  const toast = document.createElement('div');
+  toast.className = `toast ${type === 'warn' ? 'warn' : type === 'error' ? 'error' : ''}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transition = 'opacity 0.25s';
+    setTimeout(() => toast.remove(), 260);
+  }, 3200);
+}
+
+function escapeHtml(str) {
+  return String(str == null ? '' : str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// Initialize application on load
+window.addEventListener('DOMContentLoaded', () => {
+  loadState();
+  initDowntimeFormDefaults();
+  renderAll();
+});
+</script>
+</body>
+</html>
