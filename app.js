@@ -3802,55 +3802,7 @@ function buildPalette(filterText = '') {
     }
 }
 
-function loadDefaultDOLCircuit() {
-    state.components = [
-        { id: 'c_sup',  type: 'supply_3p_n_pe', tag: 'X1',  x: 180, y: 60,  rotation: 0 },
-        { id: 'c_q1',   type: 'mcb_3p',         tag: 'Q1',  x: 160, y: 160, rotation: 0, closed: true },
-        { id: 'c_km1p', type: 'contactor_3p',   tag: 'KM1', x: 160, y: 280, rotation: 0 },
-        { id: 'c_m1',   type: 'motor_3p',       tag: 'M1',  x: 160, y: 400, rotation: 0 },
 
-        { id: 'c_f1',   type: 'mcb_1p',         tag: 'F1',  x: 340, y: 140, rotation: 0, closed: true },
-        { id: 'c_s0',   type: 'estop_nc',       tag: 'S0',  x: 340, y: 240, rotation: 0, closed: true },
-        { id: 'c_s1',   type: 'pb_nc',          tag: 'S1',  x: 340, y: 340, rotation: 0, closed: true },
-        { id: 'c_s2',   type: 'pb_no',          tag: 'S2',  x: 340, y: 440, rotation: 0, closed: false },
-        { id: 'c_km1a', type: 'aux_no',         tag: 'KM1', x: 440, y: 440, rotation: 0 },
-        { id: 'c_km1c', type: 'coil',           tag: 'KM1', x: 340, y: 540, rotation: 0 },
-        { id: 'c_h1',   type: 'pilot_lamp',     tag: 'H1',  x: 440, y: 540, rotation: 0, color: '#22c55e' }
-    ];
-
-    state.wires = [
-        { id: 'w1',  potential: 'L1', points: [{ x: 140, y: 80 },  { x: 140, y: 120 }] },
-        { id: 'w2',  potential: 'L2', points: [{ x: 160, y: 80 },  { x: 160, y: 120 }] },
-        { id: 'w3',  potential: 'L3', points: [{ x: 180, y: 80 },  { x: 180, y: 120 }] },
-
-        { id: 'w4',  potential: 'L1', points: [{ x: 140, y: 200 }, { x: 140, y: 240 }] },
-        { id: 'w5',  potential: 'L2', points: [{ x: 160, y: 200 }, { x: 160, y: 240 }] },
-        { id: 'w6',  potential: 'L3', points: [{ x: 180, y: 200 }, { x: 180, y: 240 }] },
-
-        { id: 'w7',  potential: 'L1', points: [{ x: 140, y: 320 }, { x: 140, y: 360 }] },
-        { id: 'w8',  potential: 'L2', points: [{ x: 160, y: 320 }, { x: 160, y: 360 }] },
-        { id: 'w9',  potential: 'L3', points: [{ x: 180, y: 320 }, { x: 180, y: 360 }] },
-        { id: 'w10', potential: 'PE', points: [{ x: 220, y: 80 },  { x: 220, y: 400 }, { x: 200, y: 400 }] },
-
-        { id: 'w11', potential: 'L1', points: [{ x: 140, y: 100 }, { x: 340, y: 100 }] },
-        { id: 'w12', potential: 'C1', points: [{ x: 340, y: 180 }, { x: 340, y: 200 }] },
-        { id: 'w13', potential: 'C1', points: [{ x: 340, y: 280 }, { x: 340, y: 300 }] },
-        { id: 'w14', potential: 'C1', points: [{ x: 340, y: 380 }, { x: 340, y: 400 }] },
-        { id: 'w15', potential: 'C1', points: [{ x: 340, y: 400 }, { x: 440, y: 400 }] },
-        { id: 'w16', potential: 'C1', points: [{ x: 340, y: 480 }, { x: 340, y: 500 }] },
-        { id: 'w17', potential: 'C1', points: [{ x: 440, y: 480 }, { x: 340, y: 480 }] },
-        { id: 'w18', potential: 'C1', points: [{ x: 340, y: 500 }, { x: 440, y: 500 }] },
-
-        { id: 'w19', potential: 'N',  points: [{ x: 200, y: 80 }, { x: 260, y: 80 }, { x: 260, y: 600 }, { x: 340, y: 600 }, { x: 340, y: 580 }] },
-        { id: 'w20', potential: 'N',  points: [{ x: 340, y: 600 }, { x: 440, y: 600 }, { x: 440, y: 580 }] }
-    ];
-}
-
-function updateStatusCounts() {
-    const el = document.getElementById('status-counts');
-    if (el) {
-        el.textContent = `Components: ${state.components.length} · Wires: ${state.wires.length}`;
-    }
 }
 
 function resizeCanvas() {
