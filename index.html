@@ -691,6 +691,20 @@
     border: 1px solid var(--border-color);
     border-radius: var(--radius);
     overflow-x: auto;
+    cursor: grab;
+  }
+
+  .table-wrap.is-dragging {
+    cursor: grabbing;
+    user-select: none;
+  }
+
+  .table-wrap button,
+  .table-wrap input,
+  .table-wrap select,
+  .table-wrap textarea,
+  .table-wrap a {
+    cursor: pointer;
   }
 
   table {
@@ -3260,11 +3274,85 @@ function initFloatingHScroll() {
   window.addEventListener('scroll', updateFloatingHScroll, { passive: true });
 }
 
+/**
+ * Enable pressing and dragging on any table to scroll in all 4 directions
+ * (horizontal table scroll + vertical page/container scroll)
+ */
+function initTableDragScroll() {
+  document.querySelectorAll('.table-wrap').forEach(wrap => {
+    let isPointerDown = false;
+    let hasDragged = false;
+    let startX = 0;
+    let startY = 0;
+    let startScrollLeft = 0;
+    let startScrollTop = 0;
+    let startWindowScrollY = 0;
+
+    wrap.addEventListener('mousedown', e => {
+      if (e.button !== 0) return;
+      if (e.target.closest('button, input, select, textarea, a, label')) return;
+
+      isPointerDown = true;
+      hasDragged = false;
+      startX = e.clientX;
+      startY = e.clientY;
+      startScrollLeft = wrap.scrollLeft;
+      startScrollTop = wrap.scrollTop;
+      startWindowScrollY = window.scrollY;
+      wrap.classList.add('is-dragging');
+    });
+
+    window.addEventListener('mousemove', e => {
+      if (!isPointerDown) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+
+      if (!hasDragged && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) {
+        hasDragged = true;
+      }
+
+      if (hasDragged) {
+        e.preventDefault();
+        wrap.scrollLeft = startScrollLeft - dx;
+
+        if (wrap.scrollHeight > wrap.clientHeight + 2) {
+          wrap.scrollTop = startScrollTop - dy;
+        } else {
+          window.scrollTo({
+            top: startWindowScrollY - dy,
+            behavior: 'instant'
+          });
+        }
+      }
+    });
+
+    const endDrag = () => {
+      if (!isPointerDown) return;
+      isPointerDown = false;
+      wrap.classList.remove('is-dragging');
+      if (hasDragged) {
+        const suppressClick = ev => {
+          ev.stopPropagation();
+          ev.preventDefault();
+        };
+        wrap.addEventListener('click', suppressClick, { capture: true, once: true });
+        setTimeout(() => {
+          wrap.removeEventListener('click', suppressClick, { capture: true });
+        }, 50);
+      }
+    };
+
+    window.addEventListener('mouseup', endDrag);
+    window.addEventListener('blur', endDrag);
+  });
+}
+
 window.addEventListener('DOMContentLoaded', () => {
   loadState();
   initDowntimeFormDefaults();
   attachCanvasTooltipHandlers();
   initFloatingHScroll();
+  initTableDragScroll();
   renderAll();
   syncStickyNavOffset();
   updateFloatingHScroll();
