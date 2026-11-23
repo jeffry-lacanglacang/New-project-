@@ -88,10 +88,16 @@
   .topbar-inner {
     max-width: 1440px;
     margin: 0 auto;
-    padding: 0.75rem 1.25rem;
+    padding: 0.7rem 1.25rem 0.75rem;
     display: flex;
-    flex-wrap: wrap;
-    align-items: center;
+    flex-direction: column;
+    gap: 0.55rem;
+  }
+
+  .topbar-top-row {
+    width: 100%;
+    display: flex;
+    align-items: flex-start;
     justify-content: space-between;
     gap: 0.75rem;
   }
@@ -128,14 +134,7 @@
     display: block;
   }
 
-  .header-right-stack {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 0.45rem;
-  }
-
-  /* Exact Reference Copyright Pill in Upper Right Corner */
+  /* Exact Reference Copyright Pill in Uppermost Right Corner */
   .copyright-pill {
     display: inline-flex;
     align-items: center;
@@ -144,7 +143,7 @@
     background-color: rgba(39, 31, 20, 0.92);
     border: 1px solid #92621a;
     border-radius: 999px;
-    padding: 0.2rem 0.75rem;
+    padding: 0.22rem 0.78rem;
     color: #f59e0b;
     font-weight: 600;
     font-size: 0.75rem;
@@ -153,9 +152,11 @@
     white-space: nowrap;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(245, 158, 11, 0.12);
     user-select: none;
+    flex-shrink: 0;
   }
 
   .top-actions {
+    width: 100%;
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -318,8 +319,14 @@
       width: auto;
       padding: 0.78rem 0.85rem;
     }
-    .header-right-stack {
-      align-items: flex-start;
+  }
+
+  @media (max-width: 640px) {
+    .topbar-top-row {
+      flex-wrap: wrap;
+    }
+    .top-actions {
+      justify-content: flex-start;
     }
   }
 
@@ -849,43 +856,6 @@
     flex-shrink: 0;
   }
 
-  /* Compact Fleet Overview Visual Banner */
-  .fleet-visual-banner {
-    background: var(--bg-card);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius);
-    padding: 0.95rem 1.1rem;
-    margin-bottom: 1.15rem;
-  }
-
-  .fleet-visual-header {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-    margin-bottom: 0.6rem;
-  }
-
-  .fleet-visual-header h3 {
-    font-size: 0.92rem;
-    font-weight: 700;
-    color: var(--text-primary);
-  }
-
-  .canvas-compact {
-    position: relative;
-    width: 100%;
-    height: 185px;
-  }
-
-  .canvas-compact canvas {
-    width: 100%;
-    height: 100%;
-    display: block;
-    cursor: crosshair;
-  }
-
   /* Modal Dialog */
   .modal-backdrop {
     position: fixed;
@@ -978,7 +948,7 @@
       display: block !important;
       margin-bottom: 2rem;
     }
-    .kpi-card, .machine-card, .table-wrap, .panel-card, .fleet-visual-banner {
+    .kpi-card, .machine-card, .table-wrap, .panel-card {
       background: #ffffff !important;
       color: #000000 !important;
       border: 1px solid #999999 !important;
@@ -1032,33 +1002,35 @@
 <!-- Top Application Header -->
 <header class="topbar">
   <div class="topbar-inner">
-    <div class="brand">
-      <div class="brand-badge" aria-hidden="true">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="3"></circle>
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-        </svg>
+    <!-- Top Row: Brand Title on Left, Copyright Pill in Uppermost Right Corner -->
+    <div class="topbar-top-row">
+      <div class="brand">
+        <div class="brand-badge" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </div>
+        <div>
+          <h1>SHOPFLOOR PMS &amp; RELIABILITY LOGGER</h1>
+          <span>Lathe &amp; Rotating Equipment Preventive Maintenance Control</span>
+        </div>
       </div>
-      <div>
-        <h1>SHOPFLOOR PMS &amp; RELIABILITY LOGGER</h1>
-        <span>Lathe &amp; Rotating Equipment Preventive Maintenance Control</span>
-      </div>
-    </div>
 
-    <div class="header-right-stack">
-      <!-- Upper-Right Copyright Pill Notice -->
+      <!-- Upper-Right Copyright Pill Notice parallel to title -->
       <div class="copyright-pill" title="Application Copyright">
         &copy;2026 by Jeffry Lacanglacang
       </div>
+    </div>
 
-      <div class="top-actions no-print">
-        <button onclick="exportCSV()" title="Export PMS & Downtime Logs to CSV">Export CSV</button>
-        <button onclick="exportJSON()" title="Download Full JSON Backup">Backup JSON</button>
-        <button onclick="triggerImportJSON()" title="Restore JSON Backup">Restore JSON</button>
-        <input type="file" id="jsonFileInput" accept=".json" style="display:none" onchange="handleImportJSON(event)">
-        <button onclick="printChecksheet()" title="Print Work Order / PMS Sheet">Print Sheet</button>
-        <button class="btn-red btn-sm" onclick="confirmResetSample()" title="Reset to Sample Shop Data">Reset Demo</button>
-      </div>
+    <!-- Second Row: Right-Aligned Action Controls -->
+    <div class="top-actions no-print">
+      <button onclick="exportCSV()" title="Export PMS & Downtime Logs to CSV">Export CSV</button>
+      <button onclick="exportJSON()" title="Download Full JSON Backup">Backup JSON</button>
+      <button onclick="triggerImportJSON()" title="Restore JSON Backup">Restore JSON</button>
+      <input type="file" id="jsonFileInput" accept=".json" style="display:none" onchange="handleImportJSON(event)">
+      <button onclick="printChecksheet()" title="Print Work Order / PMS Sheet">Print Sheet</button>
+      <button class="btn-red btn-sm" onclick="confirmResetSample()" title="Reset to Sample Shop Data">Reset Demo</button>
     </div>
   </div>
 </header>
@@ -1095,20 +1067,6 @@
 
   <!-- TAB 1: EQUIPMENT FLEET & RUNNING HOURS -->
   <section id="tab-fleet" class="tab-panel active">
-    <!-- Compact Visual Chart Banner on Dashboard -->
-    <div class="fleet-visual-banner">
-      <div class="fleet-visual-header">
-        <h3>Fleet Running Hours &amp; PMS Interval Compliance Overview</h3>
-        <div class="legend-row" style="margin-top:0;">
-          <div class="legend-item"><span class="legend-swatch" style="background:#f59e0b;"></span> Cumulative Running Hours</div>
-          <div class="legend-item"><span class="legend-swatch" style="background:#10b981;"></span> PMS Interval Compliance %</div>
-        </div>
-      </div>
-      <div class="canvas-compact">
-        <canvas id="fleetOverviewCanvas"></canvas>
-      </div>
-    </div>
-
     <div class="section-bar">
       <div class="section-title">Shop Floor Rotating Equipment &amp; Hour Meters</div>
       <div class="filter-group no-print">
@@ -1662,9 +1620,8 @@ let appState = {
   pmsHistory: []
 };
 
-// Interactive Hit-Target Registry for Canvas Charts
+// Interactive Hit-Target Registry for Reliability Analytics Canvas Charts
 const chartHitTargets = {
-  fleetOverviewCanvas: [],
   chartHoursCompliance: [],
   chartMtbfMttr: [],
   chartDowntimeDonut: []
@@ -2555,7 +2512,6 @@ function drawRoundedRect(ctx, x, y, w, h, r) {
 
 function renderAllCharts() {
   const dataset = computeReliabilityDataset();
-  drawHoursVsComplianceChart('fleetOverviewCanvas', dataset, true);
   drawHoursVsComplianceChart('chartHoursCompliance', dataset, false);
   drawMtbfMttrChart('chartMtbfMttr', dataset);
   drawDowntimeDonutChart('chartDowntimeDonut', dataset);
@@ -2931,11 +2887,11 @@ function drawDowntimeDonutChart(canvasId, dataset) {
 }
 
 /**
- * Interactive Hover Tooltip Handler for All Canvas Charts
+ * Interactive Hover Tooltip Handler for Reliability Analytics Canvas Charts
  */
 function attachCanvasTooltipHandlers() {
   const tooltip = document.getElementById('chartTooltip');
-  const ids = ['fleetOverviewCanvas', 'chartHoursCompliance', 'chartMtbfMttr', 'chartDowntimeDonut'];
+  const ids = ['chartHoursCompliance', 'chartMtbfMttr', 'chartDowntimeDonut'];
 
   ids.forEach(id => {
     const canvas = document.getElementById(id);
@@ -3187,7 +3143,7 @@ function switchTab(tabKey) {
   document.querySelectorAll('.tab-panel').forEach(panel => {
     panel.classList.toggle('active', panel.id === `tab-${tabKey}`);
   });
-  // Redraw canvases once visible so dimensions are exact
+  // Redraw reliability canvases once visible so dimensions are exact
   requestAnimationFrame(() => renderAllCharts());
 }
 
@@ -3234,4 +3190,4 @@ window.addEventListener('resize', () => {
 });
 </script>
 </body>
-  </html>
+</html>
