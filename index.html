@@ -231,12 +231,54 @@
     min-height: 31px;
   }
 
-  /* Windows-Optimized 5-Tab Navigation Bar (No Overflow on Desktop) */
+  /* Windows-Optimized 5-Tab Navigation Bar (Sticky Below Topbar) */
   nav.tabs {
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border-color);
     width: 100%;
     overflow: hidden;
+    position: sticky;
+    top: var(--topbar-height, 96px);
+    z-index: 39;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  }
+
+  /* Floating Horizontal Scrollbar for Long Tables */
+  .floating-hscroll {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 16px;
+    background: rgba(15, 22, 36, 0.96);
+    border-top: 1px solid var(--border-bright);
+    overflow-x: auto;
+    overflow-y: hidden;
+    z-index: 50;
+    display: none;
+    backdrop-filter: blur(4px);
+  }
+
+  .floating-hscroll::-webkit-scrollbar {
+    height: 11px;
+  }
+
+  .floating-hscroll::-webkit-scrollbar-track {
+    background: #0d131f;
+  }
+
+  .floating-hscroll::-webkit-scrollbar-thumb {
+    background: #475d85;
+    border-radius: 999px;
+    border: 2px solid #0d131f;
+  }
+
+  .floating-hscroll::-webkit-scrollbar-thumb:hover {
+    background: var(--amber);
+  }
+
+  .floating-hscroll-inner {
+    height: 1px;
   }
 
   .tabs-inner {
@@ -941,7 +983,7 @@
       background: #ffffff !important;
       color: #000000 !important;
     }
-    header.topbar, nav.tabs, .no-print, button, .filter-group, .shift-quick-form, .card-actions {
+    header.topbar, nav.tabs, .floating-hscroll, .no-print, button, .filter-group, .shift-quick-form, .card-actions {
       display: none !important;
     }
     .tab-panel {
@@ -1534,6 +1576,11 @@
   </div>
 </div>
 
+<!-- Floating Horizontal Scrollbar for Long Tables -->
+<div class="floating-hscroll no-print" id="floatingHScroll" aria-label="Horizontal table scroll bar">
+  <div class="floating-hscroll-inner" id="floatingHScrollInner"></div>
+</div>
+
 <!-- Toast Container -->
 <div class="toast-container" id="toastContainer"></div>
 
@@ -1627,10 +1674,6 @@ const chartHitTargets = {
   chartDowntimeDonut: []
 };
 
-/**
- * Build rich sample shop data so the user immediately sees realistic
- * running hours, overdue/due-soon tasks, and MTBF/MTTR metrics.
- */
 function createSeedData() {
   const machines = [
     {
@@ -1883,6 +1926,7 @@ function renderAll() {
   renderHistoryTable();
   renderAnalytics();
   renderAllCharts();
+  requestAnimationFrame(updateFloatingHScroll);
 }
 
 function populateMachineDropdowns() {
@@ -2384,9 +2428,6 @@ function renderHistoryTable() {
   }).join('');
 }
 
-/**
- * Compute Machine Reliability Metrics (Shared across Table & Canvas Charts)
- */
 function computeReliabilityDataset() {
   return appState.machines.map(m => {
     const logs = appState.downtimeLogs.filter(d => d.machineId === m.id);
@@ -2405,7 +2446,6 @@ function computeReliabilityDataset() {
     const mtbfNum = unschedCount > 0 ? (runHrs / unschedCount) : runHrs;
     const mttrNum = unschedCount > 0 ? (unschedHrs / unschedCount) : 0;
 
-    // PMS Compliance % (% of machine's tasks not overdue)
     const mTasks = appState.pmsTasks.filter(t => t.machineId === m.id);
     const okTasks = mTasks.filter(t => evaluatePmsTask(t, m).state !== 'OVERDUE').length;
     const compliancePct = mTasks.length > 0 ? Math.round((okTasks / mTasks.length) * 100) : 100;
@@ -2478,11 +2518,6 @@ function renderAnalytics() {
   }).join('');
 }
 
-/**
- * ============================================================================
- * OFFLINE INTERACTIVE HTML5 CANVAS CHARTS (HDPI / WINDOWS SCALING READY)
- * ============================================================================
- */
 function setupHiDpiCanvas(canvasId) {
   const canvas = document.getElementById(canvasId);
   if (!canvas) return null;
@@ -2517,9 +2552,6 @@ function renderAllCharts() {
   drawDowntimeDonutChart('chartDowntimeDonut', dataset);
 }
 
-/**
- * Chart A: Grouped Bar + Compliance Line Chart (Running Hours vs PMS Compliance %)
- */
 function drawHoursVsComplianceChart(canvasId, dataset, isCompact) {
   const setup = setupHiDpiCanvas(canvasId);
   if (!setup) return;
@@ -2542,7 +2574,6 @@ function drawHoursVsComplianceChart(canvasId, dataset, isCompact) {
 
   const maxHrs = Math.max(500, ...dataset.map(d => d.runHrs)) * 1.15;
 
-  // Grid lines & Left Axis (Running Hours)
   const gridSteps = isCompact ? 3 : 4;
   ctx.font = '11px Consolas, monospace';
   ctx.textAlign = 'right';
@@ -2563,7 +2594,6 @@ function drawHoursVsComplianceChart(canvasId, dataset, isCompact) {
     ctx.fillStyle = '#94a3b8';
     ctx.fillText(`${val}h`, pad.left - 8, y);
 
-    // Right Axis (Compliance %)
     const pctVal = Math.round(ratio * 100);
     ctx.textAlign = 'left';
     ctx.fillStyle = '#10b981';
@@ -2581,7 +2611,6 @@ function drawHoursVsComplianceChart(canvasId, dataset, isCompact) {
     const barX = cx - barW / 2;
     const barY = pad.top + plotH - barH;
 
-    // Bar Gradient
     const grad = ctx.createLinearGradient(0, barY, 0, pad.top + plotH);
     grad.addColorStop(0, '#fbbf24');
     grad.addColorStop(1, 'rgba(245, 158, 11, 0.35)');
@@ -2589,20 +2618,17 @@ function drawHoursVsComplianceChart(canvasId, dataset, isCompact) {
     drawRoundedRect(ctx, barX, barY, barW, barH, 4);
     ctx.fill();
 
-    // Bar Value Label
     ctx.fillStyle = '#f1f5f9';
     ctx.font = 'bold 10.5px Consolas, monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
     ctx.fillText(`${d.runHrs.toFixed(0)}h`, cx, barY - 4);
 
-    // X-Axis Asset Code
     ctx.fillStyle = '#cbd5e1';
     ctx.font = 'bold 11px Consolas, monospace';
     ctx.textBaseline = 'top';
     ctx.fillText(d.m.code, cx, pad.top + plotH + 8);
 
-    // Compliance Point
     const compY = pad.top + plotH - (d.compliancePct / 100) * plotH;
     linePoints.push({ x: cx, y: compY, data: d });
 
@@ -2621,7 +2647,6 @@ function drawHoursVsComplianceChart(canvasId, dataset, isCompact) {
     });
   });
 
-  // Draw PMS Compliance Connecting Line
   if (linePoints.length > 0) {
     ctx.strokeStyle = '#10b981';
     ctx.lineWidth = 2.4;
@@ -2647,9 +2672,6 @@ function drawHoursVsComplianceChart(canvasId, dataset, isCompact) {
   }
 }
 
-/**
- * Chart B: Availability %, MTBF & MTTR Grouped Bar + Line Chart
- */
 function drawMtbfMttrChart(canvasId, dataset) {
   const setup = setupHiDpiCanvas(canvasId);
   if (!setup) return;
@@ -2684,7 +2706,6 @@ function drawMtbfMttrChart(canvasId, dataset) {
     ctx.fillStyle = '#93c5fd';
     ctx.fillText(`${val}h`, pad.left - 8, y);
 
-    // Right axis: Availability % (90% to 100% scaled)
     const availTick = (90 + ratio * 10).toFixed(0);
     ctx.textAlign = 'left';
     ctx.fillStyle = '#10b981';
@@ -2699,7 +2720,6 @@ function drawMtbfMttrChart(canvasId, dataset) {
   dataset.forEach((d, idx) => {
     const cx = pad.left + slotW * idx + slotW / 2;
 
-    // MTBF Bar (Blue)
     const mtbfH = (d.mtbfNum / maxMtbf) * plotH;
     const mtbfX = cx - subBarW - 2;
     const mtbfY = pad.top + plotH - mtbfH;
@@ -2707,7 +2727,6 @@ function drawMtbfMttrChart(canvasId, dataset) {
     drawRoundedRect(ctx, mtbfX, mtbfY, subBarW, mtbfH, 3);
     ctx.fill();
 
-    // MTTR Bar (Red, scaled visibly for clarity)
     const scaledMttrH = d.mttrNum > 0 ? Math.max(8, (d.mttrNum / 10) * (plotH * 0.45)) : 2;
     const mttrX = cx + 2;
     const mttrY = pad.top + plotH - Math.min(plotH, scaledMttrH);
@@ -2715,14 +2734,12 @@ function drawMtbfMttrChart(canvasId, dataset) {
     drawRoundedRect(ctx, mttrX, mttrY, subBarW, Math.min(plotH, scaledMttrH), 3);
     ctx.fill();
 
-    // X-axis label
     ctx.fillStyle = '#cbd5e1';
     ctx.font = 'bold 11px Consolas, monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.fillText(d.m.code, cx, pad.top + plotH + 8);
 
-    // Availability point (clamped 90..100% scale)
     const clampedAvail = Math.max(90, Math.min(100, d.availNum));
     const availY = pad.top + plotH - ((clampedAvail - 90) / 10) * plotH;
     availPts.push({ x: cx, y: availY });
@@ -2742,7 +2759,6 @@ function drawMtbfMttrChart(canvasId, dataset) {
     });
   });
 
-  // Draw Availability Line
   if (availPts.length > 0) {
     ctx.strokeStyle = '#10b981';
     ctx.lineWidth = 2.4;
@@ -2762,9 +2778,6 @@ function drawMtbfMttrChart(canvasId, dataset) {
   }
 }
 
-/**
- * Chart C: Downtime Share Donut Chart by Failure Category
- */
 function drawDowntimeDonutChart(canvasId, dataset) {
   const setup = setupHiDpiCanvas(canvasId);
   if (!setup) return;
@@ -2852,7 +2865,6 @@ function drawDowntimeDonutChart(canvasId, dataset) {
     startAngle = endAngle;
   });
 
-  // Center Donut Summary Text
   ctx.fillStyle = '#f1f5f9';
   ctx.font = 'bold 16px Consolas, monospace';
   ctx.textAlign = 'center';
@@ -2863,7 +2875,6 @@ function drawDowntimeDonutChart(canvasId, dataset) {
   ctx.font = '10.5px "Segoe UI", sans-serif';
   ctx.fillText('TOTAL DT', cx, cy + 11);
 
-  // Right-Side Breakdown Summary Labels
   const rightX = width * 0.62;
   let rowY = cy - 52;
   totals.forEach(item => {
@@ -2886,9 +2897,6 @@ function drawDowntimeDonutChart(canvasId, dataset) {
   });
 }
 
-/**
- * Interactive Hover Tooltip Handler for Reliability Analytics Canvas Charts
- */
 function attachCanvasTooltipHandlers() {
   const tooltip = document.getElementById('chartTooltip');
   const ids = ['chartHoursCompliance', 'chartMtbfMttr', 'chartDowntimeDonut'];
@@ -2943,9 +2951,6 @@ function attachCanvasTooltipHandlers() {
   });
 }
 
-/**
- * Equipment Add / Edit / Delete
- */
 function openMachineModal(machineId = null) {
   document.getElementById('editMachineId').value = machineId || '';
   if (machineId) {
@@ -3020,9 +3025,6 @@ function deleteMachine(machineId) {
   showToast(`Removed ${m.code} and associated logs.`, 'warn');
 }
 
-/**
- * CSV & JSON Data Portability + Print
- */
 function exportCSV() {
   const lines = [];
   lines.push('SECTION,EQUIPMENT_CODE,EQUIPMENT_NAME,CATEGORY_OR_TIER,DISCIPLINE_OR_SUBCAT,HOURS_OR_INTERVAL,METER_OR_WINDOW,DETAILS,TECHNICIAN');
@@ -3133,9 +3135,6 @@ function executeResetSample() {
   showToast('Reset to default 5-machine sample shop data.');
 }
 
-/**
- * Navigation, Modals, Toasts & Sanitization
- */
 function switchTab(tabKey) {
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.tab === tabKey);
@@ -3143,8 +3142,10 @@ function switchTab(tabKey) {
   document.querySelectorAll('.tab-panel').forEach(panel => {
     panel.classList.toggle('active', panel.id === `tab-${tabKey}`);
   });
-  // Redraw reliability canvases once visible so dimensions are exact
-  requestAnimationFrame(() => renderAllCharts());
+  requestAnimationFrame(() => {
+    renderAllCharts();
+    updateFloatingHScroll();
+  });
 }
 
 function openModal(id) {
@@ -3177,16 +3178,102 @@ function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
-// Initialize application on load & handle Windows viewport resize
+/**
+ * Keep the 5-tab navigation bar pinned directly underneath the sticky topbar
+ */
+function syncStickyNavOffset() {
+  const topbar = document.querySelector('header.topbar');
+  if (topbar) {
+    document.documentElement.style.setProperty('--topbar-height', `${topbar.offsetHeight}px`);
+  }
+}
+
+/**
+ * Floating Left-to-Right Scrollbar Sync for Horizontally Overflowing Tables
+ */
+let activeScrollTableWrap = null;
+let isSyncingHScroll = false;
+
+function updateFloatingHScroll() {
+  const bar = document.getElementById('floatingHScroll');
+  const inner = document.getElementById('floatingHScrollInner');
+  if (!bar || !inner) return;
+
+  const activePanel = document.querySelector('.tab-panel.active');
+  if (!activePanel) {
+    bar.style.display = 'none';
+    activeScrollTableWrap = null;
+    return;
+  }
+
+  const wraps = Array.from(activePanel.querySelectorAll('.table-wrap'));
+  let candidate = null;
+
+  for (const wrap of wraps) {
+    if (wrap.scrollWidth > wrap.clientWidth + 2) {
+      const rect = wrap.getBoundingClientRect();
+      if (rect.top < window.innerHeight - 24 && rect.bottom > window.innerHeight) {
+        candidate = wrap;
+        break;
+      }
+    }
+  }
+
+  if (!candidate) {
+    bar.style.display = 'none';
+    activeScrollTableWrap = null;
+    return;
+  }
+
+  activeScrollTableWrap = candidate;
+  const rect = candidate.getBoundingClientRect();
+  bar.style.left = `${Math.max(0, rect.left)}px`;
+  bar.style.width = `${Math.min(window.innerWidth, rect.width)}px`;
+  inner.style.width = `${candidate.scrollWidth}px`;
+  bar.style.display = 'block';
+
+  isSyncingHScroll = true;
+  bar.scrollLeft = candidate.scrollLeft;
+  isSyncingHScroll = false;
+}
+
+function initFloatingHScroll() {
+  const bar = document.getElementById('floatingHScroll');
+  if (!bar) return;
+
+  bar.addEventListener('scroll', () => {
+    if (isSyncingHScroll || !activeScrollTableWrap) return;
+    isSyncingHScroll = true;
+    activeScrollTableWrap.scrollLeft = bar.scrollLeft;
+    isSyncingHScroll = false;
+  });
+
+  document.querySelectorAll('.table-wrap').forEach(wrap => {
+    wrap.addEventListener('scroll', () => {
+      if (isSyncingHScroll || activeScrollTableWrap !== wrap) return;
+      isSyncingHScroll = true;
+      bar.scrollLeft = wrap.scrollLeft;
+      isSyncingHScroll = false;
+    });
+  });
+
+  window.addEventListener('scroll', updateFloatingHScroll, { passive: true });
+}
+
 window.addEventListener('DOMContentLoaded', () => {
   loadState();
   initDowntimeFormDefaults();
   attachCanvasTooltipHandlers();
+  initFloatingHScroll();
   renderAll();
+  syncStickyNavOffset();
+  updateFloatingHScroll();
 });
 
 window.addEventListener('resize', () => {
+  syncStickyNavOffset();
   renderAllCharts();
+  updateFloatingHScroll();
 });
 </script>
 </body>
