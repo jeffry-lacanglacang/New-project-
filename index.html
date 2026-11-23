@@ -1688,6 +1688,10 @@ const chartHitTargets = {
   chartDowntimeDonut: []
 };
 
+/**
+ * Build rich sample shop data so the user immediately sees realistic
+ * running hours, overdue/due-soon tasks, and MTBF/MTTR metrics.
+ */
 function createSeedData() {
   const machines = [
     {
@@ -2442,6 +2446,9 @@ function renderHistoryTable() {
   }).join('');
 }
 
+/**
+ * Compute Machine Reliability Metrics (Shared across Table & Canvas Charts)
+ */
 function computeReliabilityDataset() {
   return appState.machines.map(m => {
     const logs = appState.downtimeLogs.filter(d => d.machineId === m.id);
@@ -2460,6 +2467,7 @@ function computeReliabilityDataset() {
     const mtbfNum = unschedCount > 0 ? (runHrs / unschedCount) : runHrs;
     const mttrNum = unschedCount > 0 ? (unschedHrs / unschedCount) : 0;
 
+    // PMS Compliance % (% of machine's tasks not overdue)
     const mTasks = appState.pmsTasks.filter(t => t.machineId === m.id);
     const okTasks = mTasks.filter(t => evaluatePmsTask(t, m).state !== 'OVERDUE').length;
     const compliancePct = mTasks.length > 0 ? Math.round((okTasks / mTasks.length) * 100) : 100;
@@ -2532,6 +2540,11 @@ function renderAnalytics() {
   }).join('');
 }
 
+/**
+ * ============================================================================
+ * OFFLINE INTERACTIVE HTML5 CANVAS CHARTS (HDPI / WINDOWS SCALING READY)
+ * ============================================================================
+ */
 function setupHiDpiCanvas(canvasId) {
   const canvas = document.getElementById(canvasId);
   if (!canvas) return null;
@@ -2566,6 +2579,9 @@ function renderAllCharts() {
   drawDowntimeDonutChart('chartDowntimeDonut', dataset);
 }
 
+/**
+ * Chart A: Grouped Bar + Compliance Line Chart (Running Hours vs PMS Compliance %)
+ */
 function drawHoursVsComplianceChart(canvasId, dataset, isCompact) {
   const setup = setupHiDpiCanvas(canvasId);
   if (!setup) return;
@@ -2588,6 +2604,7 @@ function drawHoursVsComplianceChart(canvasId, dataset, isCompact) {
 
   const maxHrs = Math.max(500, ...dataset.map(d => d.runHrs)) * 1.15;
 
+  // Grid lines & Left Axis (Running Hours)
   const gridSteps = isCompact ? 3 : 4;
   ctx.font = '11px Consolas, monospace';
   ctx.textAlign = 'right';
@@ -2608,6 +2625,7 @@ function drawHoursVsComplianceChart(canvasId, dataset, isCompact) {
     ctx.fillStyle = '#94a3b8';
     ctx.fillText(`${val}h`, pad.left - 8, y);
 
+    // Right Axis (Compliance %)
     const pctVal = Math.round(ratio * 100);
     ctx.textAlign = 'left';
     ctx.fillStyle = '#10b981';
@@ -2625,6 +2643,7 @@ function drawHoursVsComplianceChart(canvasId, dataset, isCompact) {
     const barX = cx - barW / 2;
     const barY = pad.top + plotH - barH;
 
+    // Bar Gradient
     const grad = ctx.createLinearGradient(0, barY, 0, pad.top + plotH);
     grad.addColorStop(0, '#fbbf24');
     grad.addColorStop(1, 'rgba(245, 158, 11, 0.35)');
@@ -2632,17 +2651,20 @@ function drawHoursVsComplianceChart(canvasId, dataset, isCompact) {
     drawRoundedRect(ctx, barX, barY, barW, barH, 4);
     ctx.fill();
 
+    // Bar Value Label
     ctx.fillStyle = '#f1f5f9';
     ctx.font = 'bold 10.5px Consolas, monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
     ctx.fillText(`${d.runHrs.toFixed(0)}h`, cx, barY - 4);
 
+    // X-Axis Asset Code
     ctx.fillStyle = '#cbd5e1';
     ctx.font = 'bold 11px Consolas, monospace';
     ctx.textBaseline = 'top';
     ctx.fillText(d.m.code, cx, pad.top + plotH + 8);
 
+    // Compliance Point
     const compY = pad.top + plotH - (d.compliancePct / 100) * plotH;
     linePoints.push({ x: cx, y: compY, data: d });
 
@@ -2661,6 +2683,7 @@ function drawHoursVsComplianceChart(canvasId, dataset, isCompact) {
     });
   });
 
+  // Draw PMS Compliance Connecting Line
   if (linePoints.length > 0) {
     ctx.strokeStyle = '#10b981';
     ctx.lineWidth = 2.4;
@@ -2686,6 +2709,9 @@ function drawHoursVsComplianceChart(canvasId, dataset, isCompact) {
   }
 }
 
+/**
+ * Chart B: Availability %, MTBF & MTTR Grouped Bar + Line Chart
+ */
 function drawMtbfMttrChart(canvasId, dataset) {
   const setup = setupHiDpiCanvas(canvasId);
   if (!setup) return;
@@ -2720,6 +2746,7 @@ function drawMtbfMttrChart(canvasId, dataset) {
     ctx.fillStyle = '#93c5fd';
     ctx.fillText(`${val}h`, pad.left - 8, y);
 
+    // Right axis: Availability % (90% to 100% scaled)
     const availTick = (90 + ratio * 10).toFixed(0);
     ctx.textAlign = 'left';
     ctx.fillStyle = '#10b981';
@@ -2734,6 +2761,7 @@ function drawMtbfMttrChart(canvasId, dataset) {
   dataset.forEach((d, idx) => {
     const cx = pad.left + slotW * idx + slotW / 2;
 
+    // MTBF Bar (Blue)
     const mtbfH = (d.mtbfNum / maxMtbf) * plotH;
     const mtbfX = cx - subBarW - 2;
     const mtbfY = pad.top + plotH - mtbfH;
@@ -2741,6 +2769,7 @@ function drawMtbfMttrChart(canvasId, dataset) {
     drawRoundedRect(ctx, mtbfX, mtbfY, subBarW, mtbfH, 3);
     ctx.fill();
 
+    // MTTR Bar (Red, scaled visibly for clarity)
     const scaledMttrH = d.mttrNum > 0 ? Math.max(8, (d.mttrNum / 10) * (plotH * 0.45)) : 2;
     const mttrX = cx + 2;
     const mttrY = pad.top + plotH - Math.min(plotH, scaledMttrH);
@@ -2748,12 +2777,14 @@ function drawMtbfMttrChart(canvasId, dataset) {
     drawRoundedRect(ctx, mttrX, mttrY, subBarW, Math.min(plotH, scaledMttrH), 3);
     ctx.fill();
 
+    // X-axis label
     ctx.fillStyle = '#cbd5e1';
     ctx.font = 'bold 11px Consolas, monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.fillText(d.m.code, cx, pad.top + plotH + 8);
 
+    // Availability point (clamped 90..100% scale)
     const clampedAvail = Math.max(90, Math.min(100, d.availNum));
     const availY = pad.top + plotH - ((clampedAvail - 90) / 10) * plotH;
     availPts.push({ x: cx, y: availY });
@@ -2773,6 +2804,7 @@ function drawMtbfMttrChart(canvasId, dataset) {
     });
   });
 
+  // Draw Availability Line
   if (availPts.length > 0) {
     ctx.strokeStyle = '#10b981';
     ctx.lineWidth = 2.4;
@@ -2792,6 +2824,9 @@ function drawMtbfMttrChart(canvasId, dataset) {
   }
 }
 
+/**
+ * Chart C: Downtime Share Donut Chart by Failure Category
+ */
 function drawDowntimeDonutChart(canvasId, dataset) {
   const setup = setupHiDpiCanvas(canvasId);
   if (!setup) return;
@@ -2879,6 +2914,7 @@ function drawDowntimeDonutChart(canvasId, dataset) {
     startAngle = endAngle;
   });
 
+  // Center Donut Summary Text
   ctx.fillStyle = '#f1f5f9';
   ctx.font = 'bold 16px Consolas, monospace';
   ctx.textAlign = 'center';
@@ -2889,6 +2925,7 @@ function drawDowntimeDonutChart(canvasId, dataset) {
   ctx.font = '10.5px "Segoe UI", sans-serif';
   ctx.fillText('TOTAL DT', cx, cy + 11);
 
+  // Right-Side Breakdown Summary Labels
   const rightX = width * 0.62;
   let rowY = cy - 52;
   totals.forEach(item => {
@@ -2911,6 +2948,9 @@ function drawDowntimeDonutChart(canvasId, dataset) {
   });
 }
 
+/**
+ * Interactive Hover Tooltip Handler for Reliability Analytics Canvas Charts
+ */
 function attachCanvasTooltipHandlers() {
   const tooltip = document.getElementById('chartTooltip');
   const ids = ['chartHoursCompliance', 'chartMtbfMttr', 'chartDowntimeDonut'];
@@ -2965,6 +3005,9 @@ function attachCanvasTooltipHandlers() {
   });
 }
 
+/**
+ * Equipment Add / Edit / Delete
+ */
 function openMachineModal(machineId = null) {
   document.getElementById('editMachineId').value = machineId || '';
   if (machineId) {
@@ -3039,6 +3082,9 @@ function deleteMachine(machineId) {
   showToast(`Removed ${m.code} and associated logs.`, 'warn');
 }
 
+/**
+ * CSV & JSON Data Portability + Print
+ */
 function exportCSV() {
   const lines = [];
   lines.push('SECTION,EQUIPMENT_CODE,EQUIPMENT_NAME,CATEGORY_OR_TIER,DISCIPLINE_OR_SUBCAT,HOURS_OR_INTERVAL,METER_OR_WINDOW,DETAILS,TECHNICIAN');
@@ -3149,6 +3195,9 @@ function executeResetSample() {
   showToast('Reset to default 5-machine sample shop data.');
 }
 
+/**
+ * Navigation, Modals, Toasts & Sanitization
+ */
 function switchTab(tabKey) {
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.tab === tabKey);
@@ -3156,6 +3205,7 @@ function switchTab(tabKey) {
   document.querySelectorAll('.tab-panel').forEach(panel => {
     panel.classList.toggle('active', panel.id === `tab-${tabKey}`);
   });
+  // Redraw reliability canvases once visible so dimensions are exact
   requestAnimationFrame(() => {
     renderAllCharts();
     updateFloatingHScroll();
@@ -3226,6 +3276,7 @@ function updateFloatingHScroll() {
   for (const wrap of wraps) {
     if (wrap.scrollWidth > wrap.clientWidth + 2) {
       const rect = wrap.getBoundingClientRect();
+      // Show floating bar when the table is in view and its native bottom scrollbar is below the viewport
       if (rect.top < window.innerHeight - 24 && rect.bottom > window.innerHeight) {
         candidate = wrap;
         break;
@@ -3274,19 +3325,16 @@ function initFloatingHScroll() {
   window.addEventListener('scroll', updateFloatingHScroll, { passive: true });
 }
 
+// Initialize application on load & handle Windows viewport resize
 /**
- * Enable pressing and dragging on any table to scroll in all 4 directions
- * (horizontal table scroll + vertical page/container scroll)
+ * Enable pressing and dragging on any table to scroll left/right only
  */
 function initTableDragScroll() {
   document.querySelectorAll('.table-wrap').forEach(wrap => {
     let isPointerDown = false;
     let hasDragged = false;
     let startX = 0;
-    let startY = 0;
     let startScrollLeft = 0;
-    let startScrollTop = 0;
-    let startWindowScrollY = 0;
 
     wrap.addEventListener('mousedown', e => {
       if (e.button !== 0) return;
@@ -3295,34 +3343,21 @@ function initTableDragScroll() {
       isPointerDown = true;
       hasDragged = false;
       startX = e.clientX;
-      startY = e.clientY;
       startScrollLeft = wrap.scrollLeft;
-      startScrollTop = wrap.scrollTop;
-      startWindowScrollY = window.scrollY;
       wrap.classList.add('is-dragging');
     });
 
     window.addEventListener('mousemove', e => {
       if (!isPointerDown) return;
       const dx = e.clientX - startX;
-      const dy = e.clientY - startY;
 
-      if (!hasDragged && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) {
+      if (!hasDragged && Math.abs(dx) > 3) {
         hasDragged = true;
       }
 
       if (hasDragged) {
         e.preventDefault();
         wrap.scrollLeft = startScrollLeft - dx;
-
-        if (wrap.scrollHeight > wrap.clientHeight + 2) {
-          wrap.scrollTop = startScrollTop - dy;
-        } else {
-          window.scrollTo({
-            top: startWindowScrollY - dy,
-            behavior: 'instant'
-          });
-        }
       }
     });
 
@@ -3331,6 +3366,7 @@ function initTableDragScroll() {
       isPointerDown = false;
       wrap.classList.remove('is-dragging');
       if (hasDragged) {
+        // Suppress accidental click events right after dragging
         const suppressClick = ev => {
           ev.stopPropagation();
           ev.preventDefault();
