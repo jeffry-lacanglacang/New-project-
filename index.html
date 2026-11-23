@@ -1081,7 +1081,7 @@
 
     <!-- Second Row: Right-Aligned Action Controls -->
     <div class="top-actions no-print">
-      <button onclick="exportCSV()" title="Export PMS & Downtime Logs to CSV">Export CSV</button>
+      <button onclick="exportCSV()" title="Export Comprehensive 5-Aspect ShopFloor Report to Microsoft Excel (.xlsx)">Export Excel (.xlsx)</button>
       <button onclick="exportJSON()" title="Download Full JSON Backup">Backup JSON</button>
       <button onclick="triggerImportJSON()" title="Restore JSON Backup">Restore JSON</button>
       <input type="file" id="jsonFileInput" accept=".json" style="display:none" onchange="handleImportJSON(event)">
@@ -3083,50 +3083,497 @@ function deleteMachine(machineId) {
 }
 
 /**
- * CSV & JSON Data Portability + Print
+ * Native Microsoft Excel (.xlsx) Multi-Sheet Generator & Data Portability
+ * Builds a genuine OpenXML (.xlsx) workbook covering all 5 ShopFloor PMS aspects:
+ *   1. Equipment Fleet & Hours
+ *   2. PMS Interval Matrix
+ *   3. Downtime Logger
+ *   4. Completed PMS History
+ *   5. Reliability KPIs & MTBF-MTTR
  */
 function exportCSV() {
-  const lines = [];
-  lines.push('SECTION,EQUIPMENT_CODE,EQUIPMENT_NAME,CATEGORY_OR_TIER,DISCIPLINE_OR_SUBCAT,HOURS_OR_INTERVAL,METER_OR_WINDOW,DETAILS,TECHNICIAN');
+  const dateStamp = new Date().toISOString().slice(0, 10);
+  const generatedAt = new Date().toLocaleString();
+  const reliabilityRows = computeReliabilityDataset();
 
-  appState.pmsTasks.forEach(t => {
-    const m = getMachineById(t.machineId);
-    const ev = m ? evaluatePmsTask(t, m) : { nextDueHr: 0, state: '' };
-    lines.push([
-      'PMS_SCHEDULE',
-      csvCell(m ? m.code : ''),
-      csvCell(m ? m.name : ''),
-      csvCell(t.tier),
-      csvCell(t.discipline),
-      csvCell(`${t.interval}h (Rem: ${ev.remainingHr}h)`),
-      csvCell(`Last: ${t.lastDoneHour}h / Due: ${ev.nextDueHr}h`),
-      csvCell(`${ev.state} - ${t.title}`),
-      ''
-    ].join(','));
+  // Sheet 1: Equipment Fleet & Hours
+  const fleetRows = [
+    ['SHOPFLOOR PMS & RELIABILITY LOGGER — ASPECT 1: EQUIPMENT FLEET & RUNNING HOURS'],
+    [`Report Generated: ${generatedAt}`, '', `Total Fleet Assets: ${appState.machines.length}`, '', `Total Running Hours: ${appState.machines.reduce((s, m) => s + Number(m.runningHours || 0), 0).toFixed(1)} hrs`],
+    [],
+    ['Asset Tag / ID', 'Equipment Name', 'Make / Model / Serial', 'Operational Status', 'Motor Rating', 'Supply Voltage / Phase', 'Speed Range (RPM)', 'Cumulative Running Hours', 'Total PMS Tasks', 'Overdue Tasks', 'Due Soon Tasks', 'PMS Health Summary']
+  ];
+  appState.machines.forEach(m => {
+    const tasks = appState.pmsTasks.filter(t => t.machineId === m.id);
+    let overdue = 0, dueSoon = 0;
+    tasks.forEach(t => {
+      const ev = evaluatePmsTask(t, m);
+      if (ev.state === 'OVERDUE') overdue++;
+      else if (ev.state === 'DUE_SOON') dueSoon++;
+    });
+    const healthLabel = overdue > 0
+      ? `${overdue} Overdue, ${dueSoon} Due Soon`
+      : (dueSoon > 0 ? `${dueSoon} Due Soon` : 'All Intervals OK');
+    fleetRows.push([
+      m.code,
+      m.name,
+      m.model || 'Standard Industrial Spec',
+      m.status,
+      m.power,
+      m.voltage,
+      m.rpm,
+      Number(Number(m.runningHours || 0).toFixed(1)),
+      tasks.length,
+      overdue,
+      dueSoon,
+      healthLabel
+    ]);
   });
 
+  // Sheet 2: PMS Interval Matrix
+  const pmsRows = [
+    ['SHOPFLOOR PMS & RELIABILITY LOGGER — ASPECT 2: PMS INTERVAL MATRIX'],
+    [`Report Generated: ${generatedAt}`, '', `Total Scheduled PMS Tasks: ${appState.pmsTasks.length}`],
+    [],
+    ['Asset Tag / ID', 'Equipment Name', 'Current Meter (Hr)', 'Frequency Tier', 'Discipline', 'PMS Job Description & Acceptance Criteria', 'Interval (Hrs)', 'Last Done (Hr)', 'Next Due (Hr)', 'Remaining (Hrs)', 'Interval Used (%)', 'Health Status']
+  ];
+  const sortedPms = appState.pmsTasks.map(task => {
+    const machine = getMachineById(task.machineId);
+    const evalData = machine ? evaluatePmsTask(task, machine) : { nextDueHr: 0, remainingHr: 0, pctUsed: 0, state: 'UNKNOWN' };
+    return { task, machine, evalData };
+  }).sort((a, b) => a.evalData.remainingHr - b.evalData.remainingHr);
+
+  sortedPms.forEach(({ task, machine, evalData }) => {
+    pmsRows.push([
+      machine ? machine.code : 'N/A',
+      machine ? machine.name : 'Unknown Equipment',
+      machine ? Number(Number(machine.runningHours || 0).toFixed(1)) : 0,
+      task.tier,
+      task.discipline,
+      task.title,
+      Number(task.interval),
+      Number(Number(task.lastDoneHour).toFixed(1)),
+      Number(evalData.nextDueHr.toFixed(1)),
+      Number(evalData.remainingHr.toFixed(1)),
+      Number(evalData.pctUsed),
+      evalData.state
+    ]);
+  });
+
+  // Sheet 3: Downtime Logger
+  const downtimeRows = [
+    ['SHOPFLOOR PMS & RELIABILITY LOGGER — ASPECT 3: DOWNTIME EVENT REGISTER'],
+    [`Report Generated: ${generatedAt}`, '', `Total Logged Events: ${appState.downtimeLogs.length}`, '', `Total Downtime Hours: ${appState.downtimeLogs.reduce((s, d) => s + Number(d.hours || 0), 0).toFixed(1)} hrs`],
+    [],
+    ['Event ID', 'Asset Tag / ID', 'Equipment Name', 'Downtime Classification', 'Failure Mode / Job Category', 'Start Date & Time', 'End Date & Time', 'Duration (Hrs)', 'Root Cause / Fault Symptoms', 'Corrective Action Taken', 'Spare Parts / Materials Used', 'Technician / Electrician']
+  ];
   appState.downtimeLogs.forEach(d => {
     const m = getMachineById(d.machineId);
-    lines.push([
-      'DOWNTIME_LOG',
-      csvCell(m ? m.code : ''),
-      csvCell(m ? m.name : ''),
-      csvCell(d.classification),
-      csvCell(d.subcategory),
-      csvCell(`${d.hours}h`),
-      csvCell(`${d.start} to ${d.end}`),
-      csvCell(`Cause: ${d.rootCause} | Fix: ${d.action} | Parts: ${d.parts}`),
-      csvCell(d.technician)
-    ].join(','));
+    downtimeRows.push([
+      d.id,
+      m ? m.code : 'N/A',
+      m ? m.name : 'Unknown Equipment',
+      d.classification,
+      d.subcategory,
+      (d.start || '').replace('T', ' '),
+      (d.end || '').replace('T', ' '),
+      Number(Number(d.hours || 0).toFixed(1)),
+      d.rootCause,
+      d.action,
+      d.parts || 'None',
+      d.technician
+    ]);
   });
 
-  downloadFile(lines.join('\n'), `shopfloor_pms_downtime_${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv;charset=utf-8;');
-  showToast('Exported PMS & Downtime report to CSV.');
+  // Sheet 4: Completed PMS History
+  const historyRows = [
+    ['SHOPFLOOR PMS & RELIABILITY LOGGER — ASPECT 4: COMPLETED PMS AUDIT HISTORY'],
+    [`Report Generated: ${generatedAt}`, '', `Total Completed PMS Records: ${appState.pmsHistory.length}`],
+    [],
+    ['Audit ID', 'Completion Timestamp', 'Asset Tag / ID', 'Equipment Name', 'Frequency Tier', 'Discipline', 'PMS Task Completed', 'Completion Meter (Hr)', 'Technician / Electrician', 'Inspection Readings / Notes']
+  ];
+  appState.pmsHistory.forEach(h => {
+    const m = getMachineById(h.machineId);
+    historyRows.push([
+      h.id,
+      h.timestamp,
+      m ? m.code : 'N/A',
+      m ? m.name : 'Unknown Equipment',
+      h.tier,
+      h.discipline,
+      h.title,
+      Number(Number(h.meterHour || 0).toFixed(1)),
+      h.technician,
+      h.notes || ''
+    ]);
+  });
+
+  // Sheet 5: Reliability KPIs & MTBF/MTTR
+  const totalRunHrs = reliabilityRows.reduce((s, r) => s + r.runHrs, 0);
+  const totalSchedHrs = reliabilityRows.reduce((s, r) => s + r.schedHrs, 0);
+  const totalMechHrs = reliabilityRows.reduce((s, r) => s + r.mechHrs, 0);
+  const totalElecHrs = reliabilityRows.reduce((s, r) => s + r.elecHrs, 0);
+  const totalOpsHrs = reliabilityRows.reduce((s, r) => s + r.opsHrs, 0);
+  const totalDtHrs = reliabilityRows.reduce((s, r) => s + r.totalDt, 0);
+  const totalBreakdowns = reliabilityRows.reduce((s, r) => s + r.unschedCount, 0);
+  const fleetAvail = (totalRunHrs + totalDtHrs) > 0 ? ((totalRunHrs / (totalRunHrs + totalDtHrs)) * 100) : 100;
+  const fleetMtbf = totalBreakdowns > 0 ? (totalRunHrs / totalBreakdowns) : totalRunHrs;
+  const fleetMttr = totalBreakdowns > 0 ? ((totalMechHrs + totalElecHrs) / totalBreakdowns) : 0;
+
+  const kpiRows = [
+    ['SHOPFLOOR PMS & RELIABILITY LOGGER — ASPECT 5: RELIABILITY KPIs & MTBF / MTTR ANALYTICS'],
+    [`Report Generated: ${generatedAt}`, '', `Fleet Availability: ${fleetAvail.toFixed(2)}%`, '', `Total Unscheduled Breakdowns: ${totalBreakdowns}`],
+    [],
+    ['Asset Tag / ID', 'Equipment Name', 'Status', 'Running Hours', 'Scheduled PMS (Hrs)', 'Unsched. Mechanical (Hrs)', 'Unsched. Electrical (Hrs)', 'Operational / Other (Hrs)', 'Total Downtime (Hrs)', 'Unscheduled Breakdowns', 'Availability (%)', 'MTBF (Hrs)', 'MTTR (Hrs)', 'PMS Compliance (%)', 'PMS Tasks OK / Total']
+  ];
+  reliabilityRows.forEach(r => {
+    kpiRows.push([
+      r.m.code,
+      r.m.name,
+      r.m.status,
+      Number(r.runHrs.toFixed(1)),
+      Number(r.schedHrs.toFixed(1)),
+      Number(r.mechHrs.toFixed(1)),
+      Number(r.elecHrs.toFixed(1)),
+      Number(r.opsHrs.toFixed(1)),
+      Number(r.totalDt.toFixed(1)),
+      r.unschedCount,
+      Number(r.availNum.toFixed(2)),
+      Number(r.mtbfNum.toFixed(1)),
+      Number(r.mttrNum.toFixed(2)),
+      r.compliancePct,
+      `${r.okTasks} / ${r.totalTasks}`
+    ]);
+  });
+  kpiRows.push([
+    'FLEET TOTAL',
+    'All Shop Equipment Combined',
+    '-',
+    Number(totalRunHrs.toFixed(1)),
+    Number(totalSchedHrs.toFixed(1)),
+    Number(totalMechHrs.toFixed(1)),
+    Number(totalElecHrs.toFixed(1)),
+    Number(totalOpsHrs.toFixed(1)),
+    Number(totalDtHrs.toFixed(1)),
+    totalBreakdowns,
+    Number(fleetAvail.toFixed(2)),
+    Number(fleetMtbf.toFixed(1)),
+    Number(fleetMttr.toFixed(2)),
+    reliabilityRows.length > 0 ? Math.round(reliabilityRows.reduce((s, r) => s + r.compliancePct, 0) / reliabilityRows.length) : 100,
+    `${appState.pmsTasks.filter(t => { const m = getMachineById(t.machineId); return m && evaluatePmsTask(t, m).state !== 'OVERDUE'; }).length} / ${appState.pmsTasks.length}`
+  ]);
+
+  const sheets = [
+    { name: '1. Equipment Fleet & Hours', rows: fleetRows, hasTotalRow: false },
+    { name: '2. PMS Interval Matrix', rows: pmsRows, hasTotalRow: false },
+    { name: '3. Downtime Logger', rows: downtimeRows, hasTotalRow: false },
+    { name: '4. Completed PMS History', rows: historyRows, hasTotalRow: false },
+    { name: '5. Reliability KPIs & MTBF', rows: kpiRows, hasTotalRow: true }
+  ];
+
+  const xlsxBytes = buildMultiSheetXlsx(sheets);
+  downloadBinaryFile(
+    xlsxBytes,
+    `ShopFloor_PMS_Comprehensive_Report_${dateStamp}.xlsx`,
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  );
+  showToast('Exported comprehensive 5-aspect Excel (.xlsx) report.');
 }
 
-function csvCell(val) {
-  const s = String(val == null ? '' : val).replace(/"/g, '""');
-  return `"${s}"`;
+function xmlEscape(val) {
+  return String(val == null ? '' : val)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function colIndexToLetter(idx) {
+  let letter = '';
+  let n = idx + 1;
+  while (n > 0) {
+    const rem = (n - 1) % 26;
+    letter = String.fromCharCode(65 + rem) + letter;
+    n = Math.floor((n - 1) / 26);
+  }
+  return letter;
+}
+
+function buildSheetXml(sheet) {
+  const rows = sheet.rows;
+  const maxCols = rows.reduce((max, r) => Math.max(max, r.length), 1);
+
+  const colWidths = new Array(maxCols).fill(14);
+  rows.forEach((row, rIdx) => {
+    if (rIdx === 0 || rIdx === 1) return;
+    row.forEach((cell, cIdx) => {
+      const len = String(cell == null ? '' : cell).length;
+      colWidths[cIdx] = Math.min(54, Math.max(colWidths[cIdx], len + 4));
+    });
+  });
+
+  let colsXml = '<cols>';
+  for (let c = 0; c < maxCols; c++) {
+    colsXml += `<col min="${c + 1}" max="${c + 1}" width="${colWidths[c]}" customWidth="1"/>`;
+  }
+  colsXml += '</cols>';
+
+  let sheetDataXml = '<sheetData>';
+  rows.forEach((row, rIdx) => {
+    const excelRowNum = rIdx + 1;
+    const isBanner = rIdx === 0;
+    const isMeta = rIdx === 1;
+    const isHeader = rIdx === 3;
+    const isTotal = sheet.hasTotalRow && rIdx === rows.length - 1;
+    const htAttr = isBanner ? ' ht="26" customHeight="1"' : (isHeader ? ' ht="24" customHeight="1"' : '');
+
+    sheetDataXml += `<row r="${excelRowNum}"${htAttr}>`;
+    row.forEach((val, cIdx) => {
+      if (val === null || val === undefined || val === '') return;
+      const ref = `${colIndexToLetter(cIdx)}${excelRowNum}`;
+      let styleIdx = 0;
+      if (isBanner) styleIdx = 1;
+      else if (isMeta) styleIdx = 2;
+      else if (isHeader) styleIdx = 3;
+      else if (isTotal) styleIdx = 5;
+      else if (rIdx > 3 && rIdx % 2 === 1) styleIdx = 4;
+
+      if (typeof val === 'number' && !Number.isNaN(val)) {
+        sheetDataXml += `<c r="${ref}" s="${styleIdx}"><v>${val}</v></c>`;
+      } else {
+        sheetDataXml += `<c r="${ref}" t="inlineStr" s="${styleIdx}"><is><t>${xmlEscape(val)}</t></is></c>`;
+      }
+    });
+    sheetDataXml += '</row>';
+  });
+  sheetDataXml += '</sheetData>';
+
+  const lastColLetter = colIndexToLetter(maxCols - 1);
+  const lastRowNum = Math.max(4, rows.length);
+  const autoFilterXml = rows.length > 4 ? `<autoFilter ref="A4:${lastColLetter}${lastRowNum}"/>` : '';
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetViews>
+    <sheetView workbookViewId="0">
+      <pane ySplit="4" topLeftCell="A5" activePane="bottomLeft" state="frozen"/>
+    </sheetView>
+  </sheetViews>
+  <sheetFormatPr defaultRowHeight="20"/>
+  ${colsXml}
+  ${sheetDataXml}
+  ${autoFilterXml}
+</worksheet>`;
+}
+
+function buildMultiSheetXlsx(sheets) {
+  const encoder = new TextEncoder();
+  const files = [];
+
+  let overrides = `
+    <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+    <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>`;
+  sheets.forEach((_, idx) => {
+    overrides += `\n    <Override PartName="/xl/worksheets/sheet${idx + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`;
+  });
+  const contentTypesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>${overrides}
+</Types>`;
+  files.push({ name: '[Content_Types].xml', data: encoder.encode(contentTypesXml) });
+
+  const rootRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`;
+  files.push({ name: '_rels/.rels', data: encoder.encode(rootRelsXml) });
+
+  let sheetsXml = '';
+  sheets.forEach((s, idx) => {
+    const safeSheetName = xmlEscape(s.name.slice(0, 31));
+    sheetsXml += `\n    <sheet name="${safeSheetName}" sheetId="${idx + 1}" r:id="rId${idx + 1}"/>`;
+  });
+  const workbookXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>${sheetsXml}
+  </sheets>
+</workbook>`;
+  files.push({ name: 'xl/workbook.xml', data: encoder.encode(workbookXml) });
+
+  let wbRels = '';
+  sheets.forEach((_, idx) => {
+    wbRels += `\n  <Relationship Id="rId${idx + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${idx + 1}.xml"/>`;
+  });
+  wbRels += `\n  <Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`;
+  const workbookRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${wbRels}
+</Relationships>`;
+  files.push({ name: 'xl/_rels/workbook.xml.rels', data: encoder.encode(workbookRelsXml) });
+
+  const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <fonts count="5">
+    <font><sz val="10"/><color rgb="FF1E293B"/><name val="Calibri"/></font>
+    <font><b/><sz val="13"/><color rgb="FFF59E0B"/><name val="Calibri"/></font>
+    <font><i/><sz val="10"/><color rgb="FF475569"/><name val="Calibri"/></font>
+    <font><b/><sz val="10"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>
+    <font><b/><sz val="10"/><color rgb="FF0F172A"/><name val="Calibri"/></font>
+  </fonts>
+  <fills count="6">
+    <fill><patternFill patternType="none"/></fill>
+    <fill><patternFill patternType="gray125"/></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FF0F172A"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FF1E293B"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFF8FAFC"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFFEF3C7"/></patternFill></fill>
+  </fills>
+  <borders count="3">
+    <border><left/><right/><top/><bottom/><diagonal/></border>
+    <border>
+      <left style="thin"><color rgb="FFCBD5E1"/></left>
+      <right style="thin"><color rgb="FFCBD5E1"/></right>
+      <top style="thin"><color rgb="FFCBD5E1"/></top>
+      <bottom style="thin"><color rgb="FFCBD5E1"/></bottom>
+      <diagonal/>
+    </border>
+    <border>
+      <left style="thin"><color rgb="FF94A3B8"/></left>
+      <right style="thin"><color rgb="FF94A3B8"/></right>
+      <top style="medium"><color rgb="FF0F172A"/></top>
+      <bottom style="double"><color rgb="FF0F172A"/></bottom>
+      <diagonal/>
+    </border>
+  </borders>
+  <cellStyleXfs count="1">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>
+  </cellStyleXfs>
+  <cellXfs count="6">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>
+    <xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="center"/></xf>
+    <xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment vertical="center"/></xf>
+    <xf numFmtId="0" fontId="3" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf>
+    <xf numFmtId="0" fontId="0" fillId="4" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>
+    <xf numFmtId="0" fontId="4" fillId="5" borderId="2" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>
+  </cellXfs>
+</styleSheet>`;
+  files.push({ name: 'xl/styles.xml', data: encoder.encode(stylesXml) });
+
+  sheets.forEach((s, idx) => {
+    const sheetXml = buildSheetXml(s);
+    files.push({ name: `xl/worksheets/sheet${idx + 1}.xml`, data: encoder.encode(sheetXml) });
+  });
+
+  return buildZipArchive(files);
+}
+
+const CRC32_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let i = 0; i < 256; i++) {
+    let c = i;
+    for (let k = 0; k < 8; k++) {
+      c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    }
+    table[i] = c >>> 0;
+  }
+  return table;
+})();
+
+function crc32(bytes) {
+  let crc = 0xFFFFFFFF;
+  for (let i = 0; i < bytes.length; i++) {
+    crc = CRC32_TABLE[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+function buildZipArchive(files) {
+  const encoder = new TextEncoder();
+  const localParts = [];
+  const centralParts = [];
+  let offset = 0;
+
+  files.forEach(file => {
+    const nameBytes = encoder.encode(file.name);
+    const data = file.data;
+    const checksum = crc32(data);
+    const size = data.length;
+
+    const localHeader = new Uint8Array(30 + nameBytes.length);
+    const lv = new DataView(localHeader.buffer);
+    lv.setUint32(0, 0x04034b50, true);
+    lv.setUint16(4, 20, true);
+    lv.setUint16(6, 0x0800, true);
+    lv.setUint16(8, 0, true);
+    lv.setUint16(10, 0, true);
+    lv.setUint16(12, 0x0021, true);
+    lv.setUint32(14, checksum, true);
+    lv.setUint32(18, size, true);
+    lv.setUint32(22, size, true);
+    lv.setUint16(26, nameBytes.length, true);
+    lv.setUint16(28, 0, true);
+    localHeader.set(nameBytes, 30);
+
+    localParts.push(localHeader, data);
+
+    const centralHeader = new Uint8Array(46 + nameBytes.length);
+    const cv = new DataView(centralHeader.buffer);
+    cv.setUint32(0, 0x02014b50, true);
+    cv.setUint16(4, 20, true);
+    cv.setUint16(6, 20, true);
+    cv.setUint16(8, 0x0800, true);
+    cv.setUint16(10, 0, true);
+    cv.setUint16(12, 0, true);
+    cv.setUint16(14, 0x0021, true);
+    cv.setUint32(16, checksum, true);
+    cv.setUint32(20, size, true);
+    cv.setUint32(24, size, true);
+    cv.setUint16(28, nameBytes.length, true);
+    cv.setUint16(30, 0, true);
+    cv.setUint16(32, 0, true);
+    cv.setUint16(34, 0, true);
+    cv.setUint16(36, 0, true);
+    cv.setUint32(38, 0, true);
+    cv.setUint32(42, offset, true);
+    centralHeader.set(nameBytes, 46);
+
+    centralParts.push(centralHeader);
+    offset += localHeader.length + size;
+  });
+
+  const centralDirSize = centralParts.reduce((s, p) => s + p.length, 0);
+
+  const eocd = new Uint8Array(22);
+  const ev = new DataView(eocd.buffer);
+  ev.setUint32(0, 0x06054b50, true);
+  ev.setUint16(4, 0, true);
+  ev.setUint16(6, 0, true);
+  ev.setUint16(8, files.length, true);
+  ev.setUint16(10, files.length, true);
+  ev.setUint32(12, centralDirSize, true);
+  ev.setUint32(16, offset, true);
+  ev.setUint16(20, 0, true);
+
+  const totalSize = offset + centralDirSize + eocd.length;
+  const out = new Uint8Array(totalSize);
+  let pos = 0;
+  localParts.forEach(p => { out.set(p, pos); pos += p.length; });
+  centralParts.forEach(p => { out.set(p, pos); pos += p.length; });
+  out.set(eocd, pos);
+  return out;
+}
+
+function downloadBinaryFile(uint8Array, filename, mimeType) {
+  const blob = new Blob([uint8Array], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 function exportJSON() {
@@ -3205,7 +3652,6 @@ function switchTab(tabKey) {
   document.querySelectorAll('.tab-panel').forEach(panel => {
     panel.classList.toggle('active', panel.id === `tab-${tabKey}`);
   });
-  // Redraw reliability canvases once visible so dimensions are exact
   requestAnimationFrame(() => {
     renderAllCharts();
     updateFloatingHScroll();
@@ -3276,7 +3722,6 @@ function updateFloatingHScroll() {
   for (const wrap of wraps) {
     if (wrap.scrollWidth > wrap.clientWidth + 2) {
       const rect = wrap.getBoundingClientRect();
-      // Show floating bar when the table is in view and its native bottom scrollbar is below the viewport
       if (rect.top < window.innerHeight - 24 && rect.bottom > window.innerHeight) {
         candidate = wrap;
         break;
@@ -3325,7 +3770,6 @@ function initFloatingHScroll() {
   window.addEventListener('scroll', updateFloatingHScroll, { passive: true });
 }
 
-// Initialize application on load & handle Windows viewport resize
 /**
  * Enable pressing and dragging on any table to scroll left/right only
  */
@@ -3366,7 +3810,6 @@ function initTableDragScroll() {
       isPointerDown = false;
       wrap.classList.remove('is-dragging');
       if (hasDragged) {
-        // Suppress accidental click events right after dragging
         const suppressClick = ev => {
           ev.stopPropagation();
           ev.preventDefault();
