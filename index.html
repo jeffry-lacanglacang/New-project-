@@ -32,8 +32,8 @@
     --cyan: #06b6d4;
     --radius: 10px;
     --radius-sm: 6px;
-    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
-    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    --font-sans: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Inter, Helvetica, Arial, sans-serif;
+    --font-mono: "Cascadia Code", Consolas, ui-monospace, SFMono-Regular, Menlo, Monaco, "Liberation Mono", monospace;
     --shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
   }
 
@@ -43,6 +43,23 @@
     padding: 0;
   }
 
+  /* Custom Windows Desktop Dark Scrollbars */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--bg-primary);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #2b3850;
+    border-radius: 999px;
+    border: 2px solid var(--bg-primary);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #425578;
+  }
+
   body {
     background-color: var(--bg-primary);
     color: var(--text-primary);
@@ -50,6 +67,7 @@
     line-height: 1.5;
     min-height: 100vh;
     overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
   }
 
   .mono {
@@ -57,14 +75,20 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* Top Header */
+  /* Top Header & Windows Container Alignment */
   header.topbar {
     background: linear-gradient(180deg, #131c2e 0%, #0f1624 100%);
     border-bottom: 1px solid var(--border-color);
-    padding: 0.85rem 1.25rem;
     position: sticky;
     top: 0;
     z-index: 40;
+    width: 100%;
+  }
+
+  .topbar-inner {
+    max-width: 1440px;
+    margin: 0 auto;
+    padding: 0.75rem 1.25rem;
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -104,19 +128,47 @@
     display: block;
   }
 
+  .header-right-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.45rem;
+  }
+
+  /* Exact Reference Copyright Pill in Upper Right Corner */
+  .copyright-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #271f14;
+    background-color: rgba(39, 31, 20, 0.92);
+    border: 1px solid #92621a;
+    border-radius: 999px;
+    padding: 0.2rem 0.75rem;
+    color: #f59e0b;
+    font-weight: 600;
+    font-size: 0.75rem;
+    line-height: 1.3;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(245, 158, 11, 0.12);
+    user-select: none;
+  }
+
   .top-actions {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 0.5rem;
+    justify-content: flex-end;
+    gap: 0.45rem;
   }
 
   /* Buttons */
   button, .btn {
     font-family: var(--font-sans);
-    font-size: 0.84rem;
+    font-size: 0.82rem;
     font-weight: 600;
-    padding: 0.55rem 0.9rem;
+    padding: 0.45rem 0.82rem;
     border-radius: var(--radius-sm);
     border: 1px solid var(--border-bright);
     background: var(--bg-card);
@@ -125,9 +177,9 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 0.4rem;
+    gap: 0.38rem;
     transition: all 0.15s ease;
-    min-height: 38px;
+    min-height: 35px;
     touch-action: manipulation;
   }
 
@@ -173,24 +225,27 @@
   }
 
   button.btn-sm {
-    padding: 0.35rem 0.65rem;
-    font-size: 0.78rem;
-    min-height: 32px;
+    padding: 0.32rem 0.62rem;
+    font-size: 0.77rem;
+    min-height: 31px;
   }
 
-  /* Navigation Tabs */
+  /* Windows-Optimized 5-Tab Navigation Bar (No Overflow on Desktop) */
   nav.tabs {
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border-color);
-    padding: 0 1.25rem;
-    display: flex;
-    gap: 0.35rem;
-    overflow-x: auto;
-    scrollbar-width: none;
+    width: 100%;
+    overflow: hidden;
   }
 
-  nav.tabs::-webkit-scrollbar {
-    display: none;
+  .tabs-inner {
+    max-width: 1440px;
+    margin: 0 auto;
+    padding: 0 1.25rem;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0.25rem;
+    width: 100%;
   }
 
   .tab-btn {
@@ -199,10 +254,23 @@
     border-bottom: 3px solid transparent;
     border-radius: 0;
     color: var(--text-secondary);
-    padding: 0.85rem 1rem;
-    font-size: 0.88rem;
+    padding: 0.78rem 0.45rem;
+    font-size: clamp(0.74rem, 0.88vw, 0.87rem);
+    font-weight: 600;
     white-space: nowrap;
-    min-height: 46px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-height: 44px;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+  }
+
+  .tab-btn .tab-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .tab-btn:hover {
@@ -213,7 +281,7 @@
   .tab-btn.active {
     color: var(--amber);
     border-bottom-color: var(--amber);
-    background: rgba(245, 158, 11, 0.05);
+    background: rgba(245, 158, 11, 0.06);
   }
 
   .badge-count {
@@ -221,9 +289,10 @@
     border: 1px solid var(--border-bright);
     color: var(--text-primary);
     font-family: var(--font-mono);
-    font-size: 0.72rem;
-    padding: 0.1rem 0.45rem;
+    font-size: 0.7rem;
+    padding: 0.08rem 0.42rem;
     border-radius: 999px;
+    flex-shrink: 0;
   }
 
   .badge-count.alert {
@@ -232,11 +301,33 @@
     color: #fca5a5;
   }
 
+  @media (max-width: 820px) {
+    nav.tabs {
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    nav.tabs::-webkit-scrollbar {
+      display: none;
+    }
+    .tabs-inner {
+      display: flex;
+      width: max-content;
+      min-width: 100%;
+    }
+    .tab-btn {
+      width: auto;
+      padding: 0.78rem 0.85rem;
+    }
+    .header-right-stack {
+      align-items: flex-start;
+    }
+  }
+
   /* Main Container */
   main.container {
     max-width: 1440px;
     margin: 0 auto;
-    padding: 1.25rem;
+    padding: 1.15rem 1.25rem;
   }
 
   .tab-panel {
@@ -256,16 +347,28 @@
   /* KPI Strip */
   .kpi-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 0.9rem;
-    margin-bottom: 1.25rem;
+    margin-bottom: 1.15rem;
+  }
+
+  @media (max-width: 960px) {
+    .kpi-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 540px) {
+    .kpi-grid {
+      grid-template-columns: 1fr;
+    }
   }
 
   .kpi-card {
     background: var(--bg-card);
     border: 1px solid var(--border-color);
     border-radius: var(--radius);
-    padding: 1rem 1.1rem;
+    padding: 0.95rem 1.05rem;
     position: relative;
     overflow: hidden;
   }
@@ -286,26 +389,26 @@
   .kpi-card.blue::before { background: var(--blue); }
 
   .kpi-label {
-    font-size: 0.74rem;
+    font-size: 0.73rem;
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: var(--text-secondary);
     font-weight: 600;
-    margin-bottom: 0.35rem;
+    margin-bottom: 0.3rem;
   }
 
   .kpi-value {
     font-family: var(--font-mono);
-    font-size: 1.65rem;
+    font-size: 1.55rem;
     font-weight: 700;
     color: var(--text-primary);
     line-height: 1.15;
   }
 
   .kpi-sub {
-    font-size: 0.76rem;
+    font-size: 0.75rem;
     color: var(--text-muted);
-    margin-top: 0.3rem;
+    margin-top: 0.28rem;
   }
 
   /* Section Headers & Filter Bars */
@@ -315,11 +418,11 @@
     align-items: center;
     justify-content: space-between;
     gap: 0.75rem;
-    margin-bottom: 1rem;
+    margin-bottom: 0.95rem;
   }
 
   .section-title {
-    font-size: 1.05rem;
+    font-size: 1.02rem;
     font-weight: 700;
     display: flex;
     align-items: center;
@@ -338,10 +441,10 @@
     border: 1px solid var(--border-bright);
     color: var(--text-primary);
     border-radius: var(--radius-sm);
-    padding: 0.5rem 0.75rem;
+    padding: 0.45rem 0.7rem;
     font-family: var(--font-sans);
-    font-size: 0.86rem;
-    min-height: 38px;
+    font-size: 0.84rem;
+    min-height: 36px;
     outline: none;
     transition: border-color 0.15s;
   }
@@ -353,7 +456,7 @@
   /* Machine Fleet Cards */
   .fleet-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
     gap: 1rem;
   }
 
@@ -361,10 +464,10 @@
     background: var(--bg-card);
     border: 1px solid var(--border-color);
     border-radius: var(--radius);
-    padding: 1.1rem;
+    padding: 1.05rem;
     display: flex;
     flex-direction: column;
-    gap: 0.85rem;
+    gap: 0.8rem;
     transition: border-color 0.15s;
   }
 
@@ -388,13 +491,13 @@
   }
 
   .machine-name {
-    font-size: 1.02rem;
+    font-size: 1rem;
     font-weight: 700;
     color: var(--text-primary);
   }
 
   .machine-model {
-    font-size: 0.78rem;
+    font-size: 0.77rem;
     color: var(--text-secondary);
   }
 
@@ -405,7 +508,7 @@
     gap: 0.35rem;
     padding: 0.22rem 0.6rem;
     border-radius: 999px;
-    font-size: 0.73rem;
+    font-size: 0.72rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -462,19 +565,19 @@
     background: var(--bg-input);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
-    padding: 0.55rem 0.65rem;
+    padding: 0.52rem 0.62rem;
   }
 
   .spec-item span {
     display: block;
-    font-size: 0.68rem;
+    font-size: 0.67rem;
     color: var(--text-muted);
     text-transform: uppercase;
   }
 
   .spec-item strong {
     font-family: var(--font-mono);
-    font-size: 0.84rem;
+    font-size: 0.82rem;
     color: var(--text-primary);
   }
 
@@ -485,13 +588,13 @@
     background: rgba(245, 158, 11, 0.06);
     border: 1px solid rgba(245, 158, 11, 0.25);
     border-radius: var(--radius-sm);
-    padding: 0.6rem 0.75rem;
+    padding: 0.58rem 0.72rem;
     gap: 0.5rem;
   }
 
   .meter-reading {
     font-family: var(--font-mono);
-    font-size: 1.25rem;
+    font-size: 1.22rem;
     font-weight: 700;
     color: var(--amber);
   }
@@ -503,11 +606,11 @@
   }
 
   .shift-quick-form input {
-    width: 74px;
-    padding: 0.35rem 0.5rem;
+    width: 72px;
+    padding: 0.32rem 0.48rem;
     font-family: var(--font-mono);
-    font-size: 0.84rem;
-    min-height: 34px;
+    font-size: 0.83rem;
+    min-height: 32px;
     text-align: right;
   }
 
@@ -515,7 +618,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    font-size: 0.78rem;
+    font-size: 0.77rem;
     padding-top: 0.2rem;
     border-top: 1px solid var(--border-color);
     gap: 0.4rem;
@@ -544,24 +647,24 @@
   table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.85rem;
+    font-size: 0.84rem;
   }
 
   th {
     background: #101726;
     color: var(--text-secondary);
-    font-size: 0.73rem;
+    font-size: 0.72rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     text-align: left;
-    padding: 0.75rem 0.85rem;
+    padding: 0.7rem 0.8rem;
     border-bottom: 1px solid var(--border-color);
     white-space: nowrap;
   }
 
   td {
-    padding: 0.75rem 0.85rem;
+    padding: 0.7rem 0.8rem;
     border-bottom: 1px solid var(--border-color);
     vertical-align: middle;
   }
@@ -599,8 +702,8 @@
   /* Two-Column Panels for Forms & Analytics */
   .split-layout {
     display: grid;
-    grid-template-columns: 390px 1fr;
-    gap: 1.25rem;
+    grid-template-columns: 385px 1fr;
+    gap: 1.2rem;
     align-items: start;
   }
 
@@ -614,29 +717,30 @@
     background: var(--bg-card);
     border: 1px solid var(--border-color);
     border-radius: var(--radius);
-    padding: 1.15rem;
+    padding: 1.1rem;
   }
 
   .panel-card h3 {
-    font-size: 0.98rem;
-    margin-bottom: 0.9rem;
-    padding-bottom: 0.6rem;
+    font-size: 0.96rem;
+    margin-bottom: 0.85rem;
+    padding-bottom: 0.55rem;
     border-bottom: 1px solid var(--border-color);
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 0.5rem;
   }
 
   .form-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 0.75rem;
+    gap: 0.7rem;
   }
 
   .form-group {
     display: flex;
     flex-direction: column;
-    gap: 0.3rem;
+    gap: 0.28rem;
   }
 
   .form-group.full {
@@ -644,26 +748,69 @@
   }
 
   .form-group label {
-    font-size: 0.76rem;
+    font-size: 0.75rem;
     font-weight: 600;
     color: var(--text-secondary);
   }
 
   textarea {
-    min-height: 68px;
+    min-height: 64px;
     resize: vertical;
+  }
+
+  /* Interactive Visual Charts Grid */
+  .charts-grid-2col {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.15rem;
+    margin-bottom: 1.15rem;
+  }
+
+  @media (max-width: 980px) {
+    .charts-grid-2col {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .canvas-container {
+    position: relative;
+    width: 100%;
+    height: 270px;
+  }
+
+  .canvas-container canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: crosshair;
+  }
+
+  .chart-tooltip {
+    position: fixed;
+    pointer-events: none;
+    background: rgba(15, 23, 42, 0.96);
+    border: 1px solid var(--amber-border);
+    border-radius: var(--radius-sm);
+    padding: 0.55rem 0.75rem;
+    font-size: 0.78rem;
+    color: var(--text-primary);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.55);
+    z-index: 300;
+    display: none;
+    max-width: 260px;
+    line-height: 1.4;
   }
 
   /* Analytics Bars */
   .bar-chart-row {
-    margin-bottom: 0.95rem;
+    margin-bottom: 0.9rem;
   }
 
   .bar-chart-labels {
     display: flex;
     justify-content: space-between;
-    font-size: 0.82rem;
-    margin-bottom: 0.3rem;
+    font-size: 0.81rem;
+    margin-bottom: 0.28rem;
   }
 
   .stacked-bar {
@@ -683,22 +830,60 @@
   .legend-row {
     display: flex;
     flex-wrap: wrap;
-    gap: 1rem;
-    font-size: 0.78rem;
+    gap: 0.9rem;
+    font-size: 0.76rem;
     color: var(--text-secondary);
-    margin-top: 0.75rem;
+    margin-top: 0.65rem;
   }
 
   .legend-item {
     display: flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: 0.38rem;
   }
 
   .legend-swatch {
-    width: 12px;
-    height: 12px;
+    width: 11px;
+    height: 11px;
     border-radius: 3px;
+    flex-shrink: 0;
+  }
+
+  /* Compact Fleet Overview Visual Banner */
+  .fleet-visual-banner {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    padding: 0.95rem 1.1rem;
+    margin-bottom: 1.15rem;
+  }
+
+  .fleet-visual-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.6rem;
+  }
+
+  .fleet-visual-header h3 {
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .canvas-compact {
+    position: relative;
+    width: 100%;
+    height: 185px;
+  }
+
+  .canvas-compact canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: crosshair;
   }
 
   /* Modal Dialog */
@@ -793,7 +978,7 @@
       display: block !important;
       margin-bottom: 2rem;
     }
-    .kpi-card, .machine-card, .table-wrap, .panel-card {
+    .kpi-card, .machine-card, .table-wrap, .panel-card, .fleet-visual-banner {
       background: #ffffff !important;
       color: #000000 !important;
       border: 1px solid #999999 !important;
@@ -828,7 +1013,7 @@
     .form-grid {
       grid-template-columns: 1fr;
     }
-    header.topbar {
+    .topbar-inner {
       padding: 0.75rem;
     }
     main.container {
@@ -846,46 +1031,61 @@
 
 <!-- Top Application Header -->
 <header class="topbar">
-  <div class="brand">
-    <div class="brand-badge" aria-hidden="true">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="3"></circle>
-        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-      </svg>
+  <div class="topbar-inner">
+    <div class="brand">
+      <div class="brand-badge" aria-hidden="true">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+      </div>
+      <div>
+        <h1>SHOPFLOOR PMS &amp; RELIABILITY LOGGER</h1>
+        <span>Lathe &amp; Rotating Equipment Preventive Maintenance Control</span>
+      </div>
     </div>
-    <div>
-      <h1>SHOPFLOOR PMS &amp; RELIABILITY LOGGER</h1>
-      <span>Lathe &amp; Rotating Equipment Preventive Maintenance Control</span>
-    </div>
-  </div>
 
-  <div class="top-actions no-print">
-    <button onclick="exportCSV()" title="Export PMS & Downtime Logs to CSV">Export CSV</button>
-    <button onclick="exportJSON()" title="Download Full JSON Backup">Backup JSON</button>
-    <button onclick="triggerImportJSON()" title="Restore JSON Backup">Restore JSON</button>
-    <input type="file" id="jsonFileInput" accept=".json" style="display:none" onchange="handleImportJSON(event)">
-    <button onclick="printChecksheet()" title="Print Work Order / PMS Sheet">Print Sheet</button>
-    <button class="btn-red btn-sm" onclick="confirmResetSample()" title="Reset to Sample Shop Data">Reset Demo</button>
+    <div class="header-right-stack">
+      <!-- Upper-Right Copyright Pill Notice -->
+      <div class="copyright-pill" title="Application Copyright">
+        &copy;2026 by Jeffry Lacanglacang
+      </div>
+
+      <div class="top-actions no-print">
+        <button onclick="exportCSV()" title="Export PMS & Downtime Logs to CSV">Export CSV</button>
+        <button onclick="exportJSON()" title="Download Full JSON Backup">Backup JSON</button>
+        <button onclick="triggerImportJSON()" title="Restore JSON Backup">Restore JSON</button>
+        <input type="file" id="jsonFileInput" accept=".json" style="display:none" onchange="handleImportJSON(event)">
+        <button onclick="printChecksheet()" title="Print Work Order / PMS Sheet">Print Sheet</button>
+        <button class="btn-red btn-sm" onclick="confirmResetSample()" title="Reset to Sample Shop Data">Reset Demo</button>
+      </div>
+    </div>
   </div>
 </header>
 
-<!-- Navigation Tabs -->
+<!-- Windows-Optimized 5-Tab Navigation Bar -->
 <nav class="tabs no-print" role="tablist">
-  <button class="tab-btn active" data-tab="fleet" onclick="switchTab('fleet')">
-    Equipment Fleet &amp; Hours <span class="badge-count" id="navFleetCount">0</span>
-  </button>
-  <button class="tab-btn" data-tab="pms" onclick="switchTab('pms')">
-    PMS Interval Matrix <span class="badge-count alert" id="navPmsDueCount">0</span>
-  </button>
-  <button class="tab-btn" data-tab="downtime" onclick="switchTab('downtime')">
-    Downtime Logger <span class="badge-count" id="navDowntimeCount">0</span>
-  </button>
-  <button class="tab-btn" data-tab="history" onclick="switchTab('history')">
-    Completed PMS History <span class="badge-count" id="navHistoryCount">0</span>
-  </button>
-  <button class="tab-btn" data-tab="analytics" onclick="switchTab('analytics')">
-    Reliability KPIs &amp; MTBF/MTTR
-  </button>
+  <div class="tabs-inner">
+    <button class="tab-btn active" data-tab="fleet" onclick="switchTab('fleet')" title="Equipment Fleet & Hours">
+      <span class="tab-label">Equipment Fleet &amp; Hours</span>
+      <span class="badge-count" id="navFleetCount">0</span>
+    </button>
+    <button class="tab-btn" data-tab="pms" onclick="switchTab('pms')" title="PMS Interval Matrix">
+      <span class="tab-label">PMS Interval Matrix</span>
+      <span class="badge-count alert" id="navPmsDueCount">0</span>
+    </button>
+    <button class="tab-btn" data-tab="downtime" onclick="switchTab('downtime')" title="Downtime Logger">
+      <span class="tab-label">Downtime Logger</span>
+      <span class="badge-count" id="navDowntimeCount">0</span>
+    </button>
+    <button class="tab-btn" data-tab="history" onclick="switchTab('history')" title="Completed PMS History">
+      <span class="tab-label">Completed PMS History</span>
+      <span class="badge-count" id="navHistoryCount">0</span>
+    </button>
+    <button class="tab-btn" data-tab="analytics" onclick="switchTab('analytics')" title="Reliability KPIs & MTBF/MTTR">
+      <span class="tab-label">Reliability KPIs &amp; MTBF/MTTR</span>
+    </button>
+  </div>
 </nav>
 
 <main class="container">
@@ -895,6 +1095,20 @@
 
   <!-- TAB 1: EQUIPMENT FLEET & RUNNING HOURS -->
   <section id="tab-fleet" class="tab-panel active">
+    <!-- Compact Visual Chart Banner on Dashboard -->
+    <div class="fleet-visual-banner">
+      <div class="fleet-visual-header">
+        <h3>Fleet Running Hours &amp; PMS Interval Compliance Overview</h3>
+        <div class="legend-row" style="margin-top:0;">
+          <div class="legend-item"><span class="legend-swatch" style="background:#f59e0b;"></span> Cumulative Running Hours</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#10b981;"></span> PMS Interval Compliance %</div>
+        </div>
+      </div>
+      <div class="canvas-compact">
+        <canvas id="fleetOverviewCanvas"></canvas>
+      </div>
+    </div>
+
     <div class="section-bar">
       <div class="section-title">Shop Floor Rotating Equipment &amp; Hour Meters</div>
       <div class="filter-group no-print">
@@ -1106,10 +1320,77 @@
   <!-- TAB 5: RELIABILITY KPIs & ANALYTICS -->
   <section id="tab-analytics" class="tab-panel">
     <div class="section-bar">
-      <div class="section-title">Equipment Reliability Metrics (Availability, MTBF &amp; MTTR)</div>
+      <div class="section-title">Equipment Reliability Metrics &amp; Visual Analytics (Availability, MTBF &amp; MTTR)</div>
     </div>
 
-    <div class="table-wrap" style="margin-bottom: 1.25rem;">
+    <!-- Interactive Canvas Charts Grid -->
+    <div class="charts-grid-2col">
+      <!-- Chart 1: Equipment Running Hours vs PMS Health -->
+      <div class="panel-card">
+        <h3>
+          <span>Running Hours vs. PMS Interval Compliance</span>
+          <span style="font-size:0.72rem;color:var(--text-secondary);font-weight:500;">Hover for details</span>
+        </h3>
+        <div class="canvas-container">
+          <canvas id="chartHoursCompliance"></canvas>
+        </div>
+        <div class="legend-row">
+          <div class="legend-item"><span class="legend-swatch" style="background:#f59e0b;"></span> Running Hours</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#10b981;"></span> PMS Health (% Tasks OK)</div>
+        </div>
+      </div>
+
+      <!-- Chart 2: Availability %, MTBF & MTTR Comparison -->
+      <div class="panel-card">
+        <h3>
+          <span>Availability %, MTBF &amp; MTTR Comparison</span>
+          <span style="font-size:0.72rem;color:var(--text-secondary);font-weight:500;">Hover for details</span>
+        </h3>
+        <div class="canvas-container">
+          <canvas id="chartMtbfMttr"></canvas>
+        </div>
+        <div class="legend-row">
+          <div class="legend-item"><span class="legend-swatch" style="background:#3b82f6;"></span> MTBF (Hrs)</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#ef4444;"></span> MTTR (Hrs)</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#10b981;"></span> Availability (%)</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Second Row: Stacked Downtime Distribution + Downtime Share Donut Chart -->
+    <div class="charts-grid-2col">
+      <div class="panel-card">
+        <h3>
+          <span>Downtime Distribution by Equipment &amp; Category</span>
+        </h3>
+        <div id="downtimeVisualChart"></div>
+        <div class="legend-row">
+          <div class="legend-item"><span class="legend-swatch seg-sched"></span> Scheduled PMS</div>
+          <div class="legend-item"><span class="legend-swatch seg-mech"></span> Unscheduled Mechanical</div>
+          <div class="legend-item"><span class="legend-swatch seg-elec"></span> Unscheduled Electrical</div>
+          <div class="legend-item"><span class="legend-swatch seg-ops"></span> Operational / Other</div>
+        </div>
+      </div>
+
+      <div class="panel-card">
+        <h3>
+          <span>Total Downtime Share by Failure Category</span>
+          <span style="font-size:0.72rem;color:var(--text-secondary);font-weight:500;">Hover slices</span>
+        </h3>
+        <div class="canvas-container">
+          <canvas id="chartDowntimeDonut"></canvas>
+        </div>
+        <div class="legend-row">
+          <div class="legend-item"><span class="legend-swatch seg-sched"></span> Scheduled PMS</div>
+          <div class="legend-item"><span class="legend-swatch seg-mech"></span> Unsched. Mechanical</div>
+          <div class="legend-item"><span class="legend-swatch seg-elec"></span> Unsched. Electrical</div>
+          <div class="legend-item"><span class="legend-swatch seg-ops"></span> Operational</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Reliability Metrics Data Table -->
+    <div class="table-wrap">
       <table>
         <thead>
           <tr>
@@ -1129,22 +1410,12 @@
         <tbody id="analyticsTableBody"></tbody>
       </table>
     </div>
-
-    <div class="panel-card">
-      <h3>
-        <span>Downtime Distribution by Equipment &amp; Category</span>
-      </h3>
-      <div id="downtimeVisualChart"></div>
-      <div class="legend-row">
-        <div class="legend-item"><span class="legend-swatch seg-sched"></span> Scheduled PMS</div>
-        <div class="legend-item"><span class="legend-swatch seg-mech"></span> Unscheduled Mechanical</div>
-        <div class="legend-item"><span class="legend-swatch seg-elec"></span> Unscheduled Electrical</div>
-        <div class="legend-item"><span class="legend-swatch seg-ops"></span> Operational / Other</div>
-      </div>
-    </div>
   </section>
 
 </main>
+
+<!-- Floating Chart Tooltip -->
+<div class="chart-tooltip" id="chartTooltip"></div>
 
 <!-- MODAL: Add / Edit Equipment -->
 <div class="modal-backdrop" id="machineModal">
@@ -1391,6 +1662,14 @@ let appState = {
   pmsHistory: []
 };
 
+// Interactive Hit-Target Registry for Canvas Charts
+const chartHitTargets = {
+  fleetOverviewCanvas: [],
+  chartHoursCompliance: [],
+  chartMtbfMttr: [],
+  chartDowntimeDonut: []
+};
+
 /**
  * Build rich sample shop data so the user immediately sees realistic
  * running hours, overdue/due-soon tasks, and MTBF/MTTR metrics.
@@ -1458,19 +1737,16 @@ function createSeedData() {
   let taskCounter = 1;
 
   machines.forEach((m, mIdx) => {
-    // Select relevant subset or full catalog tailored slightly per machine
     STANDARD_PMS_CATALOG.forEach((tpl, tIdx) => {
-      // Skip lathe-specific chuck/tailstock tasks on the pump
       if (m.code === 'PUMP-01' && (tpl.title.includes('Chuck') || tpl.title.includes('Tailstock') || tpl.title.includes('Apron'))) {
         return;
       }
 
-      // Compute realistic lastDoneHour so some are OK, some Due Soon, and a few Overdue
       let remainderRatio = ((mIdx * 0.23 + tIdx * 0.17) % 0.92);
       if ((mIdx === 1 && tIdx === 20) || (mIdx === 3 && tIdx === 13) || (mIdx === 0 && tIdx === 0)) {
-        remainderRatio = 1.06; // Overdue
+        remainderRatio = 1.06;
       } else if ((mIdx === 0 && tIdx === 10) || (mIdx === 4 && tIdx === 18)) {
-        remainderRatio = 0.88; // Due soon
+        remainderRatio = 0.88;
       }
 
       const elapsed = Math.round(tpl.interval * remainderRatio * 10) / 10;
@@ -1595,9 +1871,6 @@ function createSeedData() {
   return { machines, pmsTasks, downtimeLogs, pmsHistory };
 }
 
-/**
- * Load state from localStorage or initialize with sample shop data
- */
 function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -1623,9 +1896,6 @@ function saveState() {
   }
 }
 
-/**
- * Helper: PMS Status Computation
- */
 function evaluatePmsTask(task, machine) {
   const currentHr = machine ? Number(machine.runningHours) : 0;
   const nextDueHr = Number((task.lastDoneHour + task.interval).toFixed(1));
@@ -1647,9 +1917,6 @@ function getMachineById(id) {
   return appState.machines.find(m => m.id === id);
 }
 
-/**
- * Master Render Orchestrator
- */
 function renderAll() {
   populateMachineDropdowns();
   renderGlobalKPIs();
@@ -1658,6 +1925,7 @@ function renderAll() {
   renderDowntimeTable();
   renderHistoryTable();
   renderAnalytics();
+  renderAllCharts();
 }
 
 function populateMachineDropdowns() {
@@ -1680,9 +1948,6 @@ function populateMachineDropdowns() {
   });
 }
 
-/**
- * Render Global KPI Cards & Navigation Counters
- */
 function renderGlobalKPIs() {
   const totalMachines = appState.machines.length;
   const runningCount = appState.machines.filter(m => m.status === 'Running').length;
@@ -1735,9 +2000,6 @@ function renderGlobalKPIs() {
   `;
 }
 
-/**
- * TAB 1: Render Equipment Fleet Cards
- */
 function renderFleet() {
   const statusFilter = document.getElementById('fleetStatusFilter').value;
   const grid = document.getElementById('fleetGrid');
@@ -1838,9 +2100,6 @@ function filterPmsByMachine(machineId) {
   switchTab('pms');
 }
 
-/**
- * TAB 2: Render PMS Interval Matrix Table
- */
 function renderPmsTable() {
   const mFilter = document.getElementById('pmsMachineFilter').value;
   const tFilter = document.getElementById('pmsTierFilter').value;
@@ -1861,7 +2120,6 @@ function renderPmsTable() {
     rows.push({ task, machine, evalData });
   });
 
-  // Sort by urgency (lowest remaining hours first)
   rows.sort((a, b) => a.evalData.remainingHr - b.evalData.remainingHr);
 
   const tbody = document.getElementById('pmsTableBody');
@@ -1917,9 +2175,6 @@ function renderPmsTable() {
   }).join('');
 }
 
-/**
- * Complete PMS Task Workflow
- */
 function openCompletePmsModal(taskId) {
   const task = appState.pmsTasks.find(t => t.id === taskId);
   if (!task) return;
@@ -1973,9 +2228,6 @@ function submitCompletePms(e) {
   showToast(`PMS task logged for ${machine ? machine.code : 'machine'} at ${compHour} hrs.`);
 }
 
-/**
- * Custom PMS Task Creation
- */
 function openCustomPmsModal() {
   populateMachineDropdowns();
   const mId = document.getElementById('cpMachine').value;
@@ -2022,9 +2274,6 @@ function saveCustomPms(e) {
   showToast('Custom PMS task added to interval matrix.');
 }
 
-/**
- * TAB 3: Downtime Logger
- */
 function initDowntimeFormDefaults() {
   updateSubcategoryOptions();
   const now = new Date();
@@ -2145,9 +2394,6 @@ function deleteDowntime(id) {
   showToast('Downtime log entry removed.', 'warn');
 }
 
-/**
- * TAB 4: Render Completed PMS History
- */
 function renderHistoryTable() {
   const mFilter = document.getElementById('histMachineFilter').value;
   const filtered = appState.pmsHistory.filter(h => mFilter === 'ALL' || h.machineId === mFilter);
@@ -2182,14 +2428,10 @@ function renderHistoryTable() {
 }
 
 /**
- * TAB 5: Reliability KPIs (Availability, MTBF, MTTR) & Visual Breakdown
+ * Compute Machine Reliability Metrics (Shared across Table & Canvas Charts)
  */
-function renderAnalytics() {
-  const tbody = document.getElementById('analyticsTableBody');
-  const chartBox = document.getElementById('downtimeVisualChart');
-
-  let maxTotalDt = 0.1;
-  const rows = appState.machines.map(m => {
+function computeReliabilityDataset() {
+  return appState.machines.map(m => {
     const logs = appState.downtimeLogs.filter(d => d.machineId === m.id);
     const schedHrs = logs.filter(d => d.classification === 'Scheduled PMS').reduce((a, b) => a + Number(b.hours), 0);
     const mechHrs = logs.filter(d => d.classification === 'Unscheduled Mechanical').reduce((a, b) => a + Number(b.hours), 0);
@@ -2200,15 +2442,46 @@ function renderAnalytics() {
     const unschedCount = unschedLogs.length;
     const unschedHrs = mechHrs + elecHrs;
     const totalDt = schedHrs + unschedHrs + opsHrs;
-    if (totalDt > maxTotalDt) maxTotalDt = totalDt;
 
     const runHrs = Number(m.runningHours || 0);
-    const avail = (runHrs + totalDt) > 0 ? ((runHrs / (runHrs + totalDt)) * 100).toFixed(2) : '100.00';
-    const mtbf = unschedCount > 0 ? (runHrs / unschedCount).toFixed(1) : runHrs.toFixed(1) + '+';
-    const mttr = unschedCount > 0 ? (unschedHrs / unschedCount).toFixed(2) : '0.00';
+    const availNum = (runHrs + totalDt) > 0 ? ((runHrs / (runHrs + totalDt)) * 100) : 100;
+    const mtbfNum = unschedCount > 0 ? (runHrs / unschedCount) : runHrs;
+    const mttrNum = unschedCount > 0 ? (unschedHrs / unschedCount) : 0;
 
-    return { m, runHrs, schedHrs, mechHrs, elecHrs, opsHrs, totalDt, unschedCount, avail, mtbf, mttr };
+    // PMS Compliance % (% of machine's tasks not overdue)
+    const mTasks = appState.pmsTasks.filter(t => t.machineId === m.id);
+    const okTasks = mTasks.filter(t => evaluatePmsTask(t, m).state !== 'OVERDUE').length;
+    const compliancePct = mTasks.length > 0 ? Math.round((okTasks / mTasks.length) * 100) : 100;
+
+    return {
+      m,
+      runHrs,
+      schedHrs,
+      mechHrs,
+      elecHrs,
+      opsHrs,
+      totalDt,
+      unschedCount,
+      availNum,
+      avail: availNum.toFixed(2),
+      mtbfNum,
+      mtbf: unschedCount > 0 ? mtbfNum.toFixed(1) : runHrs.toFixed(1) + '+',
+      mttrNum,
+      mttr: mttrNum.toFixed(2),
+      compliancePct,
+      totalTasks: mTasks.length,
+      okTasks
+    };
   });
+}
+
+function renderAnalytics() {
+  const tbody = document.getElementById('analyticsTableBody');
+  const chartBox = document.getElementById('downtimeVisualChart');
+  const rows = computeReliabilityDataset();
+
+  let maxTotalDt = 0.1;
+  rows.forEach(r => { if (r.totalDt > maxTotalDt) maxTotalDt = r.totalDt; });
 
   tbody.innerHTML = rows.map(r => `
     <tr>
@@ -2220,7 +2493,7 @@ function renderAnalytics() {
       <td class="mono" style="color:#d8b4fe;">${r.elecHrs.toFixed(1)}</td>
       <td class="mono" style="color:var(--text-secondary);">${r.opsHrs.toFixed(1)}</td>
       <td class="mono">${r.unschedCount}</td>
-      <td class="mono" style="font-weight:700;color:${Number(r.avail) >= 98 ? 'var(--emerald)' : 'var(--amber)'};">${r.avail}%</td>
+      <td class="mono" style="font-weight:700;color:${r.availNum >= 98 ? 'var(--emerald)' : 'var(--amber)'};">${r.avail}%</td>
       <td class="mono">${r.mtbf}</td>
       <td class="mono">${r.mttr}</td>
     </tr>
@@ -2235,7 +2508,7 @@ function renderAnalytics() {
       <div class="bar-chart-row">
         <div class="bar-chart-labels">
           <span><strong class="mono" style="color:var(--amber);">${escapeHtml(r.m.code)}</strong> — ${escapeHtml(r.m.name)}</span>
-          <span class="mono" style="color:var(--text-secondary);">Total Downtime: <strong>${r.totalDt.toFixed(1)} hrs</strong> (Avail: ${r.avail}%)</span>
+          <span class="mono" style="color:var(--text-secondary);">Total DT: <strong>${r.totalDt.toFixed(1)}h</strong> (Avail: ${r.avail}%)</span>
         </div>
         <div class="stacked-bar">
           <div class="seg-sched" style="width:${wSched}%" title="Scheduled PMS: ${r.schedHrs.toFixed(1)}h"></div>
@@ -2246,6 +2519,472 @@ function renderAnalytics() {
       </div>
     `;
   }).join('');
+}
+
+/**
+ * ============================================================================
+ * OFFLINE INTERACTIVE HTML5 CANVAS CHARTS (HDPI / WINDOWS SCALING READY)
+ * ============================================================================
+ */
+function setupHiDpiCanvas(canvasId) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return null;
+  const parent = canvas.parentElement;
+  const rect = parent.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) return null;
+
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.floor(rect.width * dpr);
+  canvas.height = Math.floor(rect.height * dpr);
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { ctx, width: rect.width, height: rect.height };
+}
+
+function drawRoundedRect(ctx, x, y, w, h, r) {
+  if (w <= 0 || h <= 0) return;
+  const radius = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.arcTo(x + w, y, x + w, y + h, radius);
+  ctx.arcTo(x + w, y + h, x, y + h, radius);
+  ctx.arcTo(x, y + h, x, y, radius);
+  ctx.arcTo(x, y, x + w, y, radius);
+  ctx.closePath();
+}
+
+function renderAllCharts() {
+  const dataset = computeReliabilityDataset();
+  drawHoursVsComplianceChart('fleetOverviewCanvas', dataset, true);
+  drawHoursVsComplianceChart('chartHoursCompliance', dataset, false);
+  drawMtbfMttrChart('chartMtbfMttr', dataset);
+  drawDowntimeDonutChart('chartDowntimeDonut', dataset);
+}
+
+/**
+ * Chart A: Grouped Bar + Compliance Line Chart (Running Hours vs PMS Compliance %)
+ */
+function drawHoursVsComplianceChart(canvasId, dataset, isCompact) {
+  const setup = setupHiDpiCanvas(canvasId);
+  if (!setup) return;
+  const { ctx, width, height } = setup;
+  chartHitTargets[canvasId] = [];
+
+  ctx.clearRect(0, 0, width, height);
+
+  if (dataset.length === 0) {
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '13px "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('No equipment data available.', width / 2, height / 2);
+    return;
+  }
+
+  const pad = { top: isCompact ? 18 : 26, right: 48, bottom: 32, left: 54 };
+  const plotW = width - pad.left - pad.right;
+  const plotH = height - pad.top - pad.bottom;
+
+  const maxHrs = Math.max(500, ...dataset.map(d => d.runHrs)) * 1.15;
+
+  // Grid lines & Left Axis (Running Hours)
+  const gridSteps = isCompact ? 3 : 4;
+  ctx.font = '11px Consolas, monospace';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+
+  for (let i = 0; i <= gridSteps; i++) {
+    const ratio = i / gridSteps;
+    const y = pad.top + plotH - ratio * plotH;
+    const val = Math.round(ratio * maxHrs);
+
+    ctx.strokeStyle = 'rgba(55, 71, 102, 0.45)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(pad.left, y);
+    ctx.lineTo(pad.left + plotW, y);
+    ctx.stroke();
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText(`${val}h`, pad.left - 8, y);
+
+    // Right Axis (Compliance %)
+    const pctVal = Math.round(ratio * 100);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#10b981';
+    ctx.fillText(`${pctVal}%`, pad.left + plotW + 8, y);
+    ctx.textAlign = 'right';
+  }
+
+  const slotW = plotW / dataset.length;
+  const barW = Math.min(44, slotW * 0.44);
+  const linePoints = [];
+
+  dataset.forEach((d, idx) => {
+    const cx = pad.left + slotW * idx + slotW / 2;
+    const barH = (d.runHrs / maxHrs) * plotH;
+    const barX = cx - barW / 2;
+    const barY = pad.top + plotH - barH;
+
+    // Bar Gradient
+    const grad = ctx.createLinearGradient(0, barY, 0, pad.top + plotH);
+    grad.addColorStop(0, '#fbbf24');
+    grad.addColorStop(1, 'rgba(245, 158, 11, 0.35)');
+    ctx.fillStyle = grad;
+    drawRoundedRect(ctx, barX, barY, barW, barH, 4);
+    ctx.fill();
+
+    // Bar Value Label
+    ctx.fillStyle = '#f1f5f9';
+    ctx.font = 'bold 10.5px Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(`${d.runHrs.toFixed(0)}h`, cx, barY - 4);
+
+    // X-Axis Asset Code
+    ctx.fillStyle = '#cbd5e1';
+    ctx.font = 'bold 11px Consolas, monospace';
+    ctx.textBaseline = 'top';
+    ctx.fillText(d.m.code, cx, pad.top + plotH + 8);
+
+    // Compliance Point
+    const compY = pad.top + plotH - (d.compliancePct / 100) * plotH;
+    linePoints.push({ x: cx, y: compY, data: d });
+
+    chartHitTargets[canvasId].push({
+      type: 'rect',
+      x: cx - slotW * 0.42,
+      y: pad.top,
+      w: slotW * 0.84,
+      h: plotH,
+      html: `
+        <div style="color:#f59e0b;font-weight:700;">${escapeHtml(d.m.code)} — ${escapeHtml(d.m.name)}</div>
+        <div>Running Meter: <strong>${d.runHrs.toFixed(1)} hrs</strong></div>
+        <div>PMS Health: <strong style="color:#10b981;">${d.compliancePct}%</strong> (${d.okTasks}/${d.totalTasks} tasks OK)</div>
+        <div>Status: <strong>${escapeHtml(d.m.status)}</strong></div>
+      `
+    });
+  });
+
+  // Draw PMS Compliance Connecting Line
+  if (linePoints.length > 0) {
+    ctx.strokeStyle = '#10b981';
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    linePoints.forEach((pt, idx) => {
+      if (idx === 0) ctx.moveTo(pt.x, pt.y);
+      else ctx.lineTo(pt.x, pt.y);
+    });
+    ctx.stroke();
+
+    linePoints.forEach(pt => {
+      ctx.fillStyle = '#0b0f17';
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, 5, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = '#10b981';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, 4.5, 0, Math.PI * 2);
+      ctx.stroke();
+    });
+  }
+}
+
+/**
+ * Chart B: Availability %, MTBF & MTTR Grouped Bar + Line Chart
+ */
+function drawMtbfMttrChart(canvasId, dataset) {
+  const setup = setupHiDpiCanvas(canvasId);
+  if (!setup) return;
+  const { ctx, width, height } = setup;
+  chartHitTargets[canvasId] = [];
+
+  ctx.clearRect(0, 0, width, height);
+  if (dataset.length === 0) return;
+
+  const pad = { top: 26, right: 48, bottom: 32, left: 54 };
+  const plotW = width - pad.left - pad.right;
+  const plotH = height - pad.top - pad.bottom;
+
+  const maxMtbf = Math.max(500, ...dataset.map(d => d.mtbfNum)) * 1.15;
+
+  ctx.font = '11px Consolas, monospace';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+
+  for (let i = 0; i <= 4; i++) {
+    const ratio = i / 4;
+    const y = pad.top + plotH - ratio * plotH;
+    const val = Math.round(ratio * maxMtbf);
+
+    ctx.strokeStyle = 'rgba(55, 71, 102, 0.45)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(pad.left, y);
+    ctx.lineTo(pad.left + plotW, y);
+    ctx.stroke();
+
+    ctx.fillStyle = '#93c5fd';
+    ctx.fillText(`${val}h`, pad.left - 8, y);
+
+    // Right axis: Availability % (90% to 100% scaled)
+    const availTick = (90 + ratio * 10).toFixed(0);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#10b981';
+    ctx.fillText(`${availTick}%`, pad.left + plotW + 8, y);
+    ctx.textAlign = 'right';
+  }
+
+  const slotW = plotW / dataset.length;
+  const subBarW = Math.min(22, slotW * 0.28);
+  const availPts = [];
+
+  dataset.forEach((d, idx) => {
+    const cx = pad.left + slotW * idx + slotW / 2;
+
+    // MTBF Bar (Blue)
+    const mtbfH = (d.mtbfNum / maxMtbf) * plotH;
+    const mtbfX = cx - subBarW - 2;
+    const mtbfY = pad.top + plotH - mtbfH;
+    ctx.fillStyle = '#3b82f6';
+    drawRoundedRect(ctx, mtbfX, mtbfY, subBarW, mtbfH, 3);
+    ctx.fill();
+
+    // MTTR Bar (Red, scaled visibly for clarity)
+    const scaledMttrH = d.mttrNum > 0 ? Math.max(8, (d.mttrNum / 10) * (plotH * 0.45)) : 2;
+    const mttrX = cx + 2;
+    const mttrY = pad.top + plotH - Math.min(plotH, scaledMttrH);
+    ctx.fillStyle = '#ef4444';
+    drawRoundedRect(ctx, mttrX, mttrY, subBarW, Math.min(plotH, scaledMttrH), 3);
+    ctx.fill();
+
+    // X-axis label
+    ctx.fillStyle = '#cbd5e1';
+    ctx.font = 'bold 11px Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(d.m.code, cx, pad.top + plotH + 8);
+
+    // Availability point (clamped 90..100% scale)
+    const clampedAvail = Math.max(90, Math.min(100, d.availNum));
+    const availY = pad.top + plotH - ((clampedAvail - 90) / 10) * plotH;
+    availPts.push({ x: cx, y: availY });
+
+    chartHitTargets[canvasId].push({
+      type: 'rect',
+      x: cx - slotW * 0.42,
+      y: pad.top,
+      w: slotW * 0.84,
+      h: plotH,
+      html: `
+        <div style="color:#f59e0b;font-weight:700;">${escapeHtml(d.m.code)} Reliability</div>
+        <div>Availability: <strong style="color:#10b981;">${d.avail}%</strong></div>
+        <div>MTBF: <strong style="color:#93c5fd;">${d.mtbf} hrs</strong></div>
+        <div>MTTR: <strong style="color:#fca5a5;">${d.mttr} hrs</strong> (${d.unschedCount} failures)</div>
+      `
+    });
+  });
+
+  // Draw Availability Line
+  if (availPts.length > 0) {
+    ctx.strokeStyle = '#10b981';
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    availPts.forEach((pt, i) => {
+      if (i === 0) ctx.moveTo(pt.x, pt.y);
+      else ctx.lineTo(pt.x, pt.y);
+    });
+    ctx.stroke();
+
+    availPts.forEach(pt => {
+      ctx.fillStyle = '#10b981';
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+}
+
+/**
+ * Chart C: Downtime Share Donut Chart by Failure Category
+ */
+function drawDowntimeDonutChart(canvasId, dataset) {
+  const setup = setupHiDpiCanvas(canvasId);
+  if (!setup) return;
+  const { ctx, width, height } = setup;
+  chartHitTargets[canvasId] = [];
+
+  ctx.clearRect(0, 0, width, height);
+
+  const totals = [
+    {
+      label: 'Scheduled PMS',
+      hours: dataset.reduce((s, d) => s + d.schedHrs, 0),
+      color: '#f59e0b'
+    },
+    {
+      label: 'Unscheduled Mechanical',
+      hours: dataset.reduce((s, d) => s + d.mechHrs, 0),
+      color: '#3b82f6'
+    },
+    {
+      label: 'Unscheduled Electrical',
+      hours: dataset.reduce((s, d) => s + d.elecHrs, 0),
+      color: '#a855f7'
+    },
+    {
+      label: 'Operational / Other',
+      hours: dataset.reduce((s, d) => s + d.opsHrs, 0),
+      color: '#64748b'
+    }
+  ];
+
+  const grandTotal = totals.reduce((s, t) => s + t.hours, 0);
+  const cx = width * 0.34;
+  const cy = height * 0.5;
+  const outerR = Math.min(cx - 16, cy - 16, 98);
+  const innerR = outerR * 0.58;
+
+  if (grandTotal <= 0) {
+    ctx.strokeStyle = '#263248';
+    ctx.lineWidth = 16;
+    ctx.beginPath();
+    ctx.arc(cx, cy, (outerR + innerR) / 2, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = 'bold 12px "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('0.0h DT', cx, cy);
+    return;
+  }
+
+  let startAngle = -Math.PI / 2;
+  totals.forEach(item => {
+    if (item.hours <= 0) return;
+    const sliceAngle = (item.hours / grandTotal) * Math.PI * 2;
+    const endAngle = startAngle + sliceAngle;
+
+    ctx.fillStyle = item.color;
+    ctx.beginPath();
+    ctx.arc(cx, cy, outerR, startAngle, endAngle);
+    ctx.arc(cx, cy, innerR, endAngle, startAngle, true);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.strokeStyle = '#161f30';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    const pct = ((item.hours / grandTotal) * 100).toFixed(1);
+    chartHitTargets[canvasId].push({
+      type: 'arc',
+      cx,
+      cy,
+      innerR,
+      outerR,
+      startAngle,
+      endAngle,
+      html: `
+        <div style="color:${item.color};font-weight:700;">${item.label}</div>
+        <div>Duration: <strong>${item.hours.toFixed(1)} hrs</strong> (${pct}%)</div>
+      `
+    });
+
+    startAngle = endAngle;
+  });
+
+  // Center Donut Summary Text
+  ctx.fillStyle = '#f1f5f9';
+  ctx.font = 'bold 16px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(`${grandTotal.toFixed(1)}h`, cx, cy - 7);
+
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '10.5px "Segoe UI", sans-serif';
+  ctx.fillText('TOTAL DT', cx, cy + 11);
+
+  // Right-Side Breakdown Summary Labels
+  const rightX = width * 0.62;
+  let rowY = cy - 52;
+  totals.forEach(item => {
+    const pct = ((item.hours / grandTotal) * 100).toFixed(1);
+    ctx.fillStyle = item.color;
+    drawRoundedRect(ctx, rightX, rowY - 5, 10, 10, 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#e2e8f0';
+    ctx.font = '600 11.5px "Segoe UI", sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(item.label, rightX + 16, rowY);
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '11px Consolas, monospace';
+    ctx.fillText(`${item.hours.toFixed(1)}h (${pct}%)`, rightX + 16, rowY + 14);
+
+    rowY += 34;
+  });
+}
+
+/**
+ * Interactive Hover Tooltip Handler for All Canvas Charts
+ */
+function attachCanvasTooltipHandlers() {
+  const tooltip = document.getElementById('chartTooltip');
+  const ids = ['fleetOverviewCanvas', 'chartHoursCompliance', 'chartMtbfMttr', 'chartDowntimeDonut'];
+
+  ids.forEach(id => {
+    const canvas = document.getElementById(id);
+    if (!canvas) return;
+
+    canvas.addEventListener('mousemove', e => {
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const targets = chartHitTargets[id] || [];
+
+      let hit = null;
+      for (const t of targets) {
+        if (t.type === 'rect') {
+          if (mx >= t.x && mx <= t.x + t.w && my >= t.y && my <= t.y + t.h) {
+            hit = t;
+            break;
+          }
+        } else if (t.type === 'arc') {
+          const dx = mx - t.cx;
+          const dy = my - t.cy;
+          const dist = Math.hypot(dx, dy);
+          if (dist >= t.innerR && dist <= t.outerR) {
+            let ang = Math.atan2(dy, dx);
+            if (ang < -Math.PI / 2) ang += Math.PI * 2;
+            if (ang >= t.startAngle && ang <= t.endAngle) {
+              hit = t;
+              break;
+            }
+          }
+        }
+      }
+
+      if (hit) {
+        tooltip.innerHTML = hit.html;
+        tooltip.style.display = 'block';
+        const tipX = Math.min(window.innerWidth - 275, e.clientX + 14);
+        const tipY = Math.max(10, e.clientY - 12);
+        tooltip.style.left = `${tipX}px`;
+        tooltip.style.top = `${tipY}px`;
+      } else {
+        tooltip.style.display = 'none';
+      }
+    });
+
+    canvas.addEventListener('mouseleave', () => {
+      tooltip.style.display = 'none';
+    });
+  });
 }
 
 /**
@@ -2294,7 +3033,6 @@ function saveMachine(e) {
   } else {
     const newId = 'm_' + Date.now();
     appState.machines.push({ id: newId, ...payload });
-    // Seed standard PMS checklist for new machine
     STANDARD_PMS_CATALOG.forEach((tpl, idx) => {
       appState.pmsTasks.push({
         id: `pms_${Date.now()}_${idx}`,
@@ -2449,6 +3187,8 @@ function switchTab(tabKey) {
   document.querySelectorAll('.tab-panel').forEach(panel => {
     panel.classList.toggle('active', panel.id === `tab-${tabKey}`);
   });
+  // Redraw canvases once visible so dimensions are exact
+  requestAnimationFrame(() => renderAllCharts());
 }
 
 function openModal(id) {
@@ -2481,12 +3221,17 @@ function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
-// Initialize application on load
+// Initialize application on load & handle Windows viewport resize
 window.addEventListener('DOMContentLoaded', () => {
   loadState();
   initDowntimeFormDefaults();
+  attachCanvasTooltipHandlers();
   renderAll();
+});
+
+window.addEventListener('resize', () => {
+  renderAllCharts();
 });
 </script>
 </body>
-</html>
+  </html>
